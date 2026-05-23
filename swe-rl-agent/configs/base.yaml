@@ -1,0 +1,49 @@
+defaults:
+  - model: qwen25_coder_14b
+  - algo: grpo
+  - reward: exec_grounded
+  - eval: swebench_lite
+  - _self_
+
+run_id: ${oc.env:RUN_ID,auto}
+seed: 17
+output_dir: ${oc.env:TRAIN_OUTPUT_DIR,./outputs}
+log_dir: ${oc.env:LOG_DIR,./logs}
+
+paths:
+  trajectories: ${output_dir}/trajectories
+  checkpoints: ${output_dir}/checkpoints
+  predictions: ${output_dir}/predictions
+  reports: ${output_dir}/reports
+
+sandbox:
+  image: ${oc.env:SANDBOX_IMAGE,swe-rl/sandbox:latest}
+  mem_gb: 4
+  cpus: 2.0
+  wallclock_s: 600
+  disable_network_after_install: true
+
+agent:
+  max_steps: 50
+  max_test_runs: 6
+  max_context_tokens: 200000
+  max_new_tokens_per_turn: 2048
+  temperature: 0.8
+  top_p: 0.95
+
+cost:
+  max_dollars_per_run: ${oc.env:MAX_DOLLARS_PER_RUN,50.0}
+  dollar_per_1k_in: ${oc.env:DOLLAR_PER_1K_TOKENS_IN,0.0}
+  dollar_per_1k_out: ${oc.env:DOLLAR_PER_1K_TOKENS_OUT,0.0}
+
+observability:
+  sentry_dsn: ${oc.env:SENTRY_DSN,}
+  wandb_project: ${oc.env:WANDB_PROJECT,swe-rl-agent}
+  wandb_entity: ${oc.env:WANDB_ENTITY,}
+  prometheus_port: ${oc.env:PROMETHEUS_PORT,9100}
+  log_level: ${oc.env:LOG_LEVEL,INFO}
+
+vllm:
+  host: ${oc.env:VLLM_HOST,127.0.0.1}
+  port: ${oc.env:VLLM_PORT,8000}
+  api_key: ${oc.env:VLLM_API_KEY,local-dev}

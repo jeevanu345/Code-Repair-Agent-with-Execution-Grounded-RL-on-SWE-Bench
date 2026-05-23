@@ -1,0 +1,9 @@
+name: swebench_lite
+dataset: princeton-nlp/SWE-bench_Lite
+split: test
+max_instances: null
+k_samples: 1
+majority_select_k: 5
+parallelism: 8
+output_predictions: ${output_dir}/predictions/${run_id}.json
+report_dir: ${output_dir}/reports/${run_id}

@@ -1,0 +1,9 @@
+name: Qwen/Qwen2.5-Coder-14B-Instruct
+revision: main
+tokenizer: Qwen/Qwen2.5-Coder-14B-Instruct
+dtype: bfloat16
+max_model_len: 32768
+chat_template: qwen
+gpu_memory_utilization: 0.90
+tensor_parallel_size: 1
+trust_remote_code: false
