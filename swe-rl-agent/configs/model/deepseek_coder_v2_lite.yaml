@@ -1,0 +1,9 @@
+name: deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct
+revision: main
+tokenizer: deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct
+dtype: bfloat16
+max_model_len: 32768
+chat_template: deepseek
+gpu_memory_utilization: 0.88
+tensor_parallel_size: 1
+trust_remote_code: true

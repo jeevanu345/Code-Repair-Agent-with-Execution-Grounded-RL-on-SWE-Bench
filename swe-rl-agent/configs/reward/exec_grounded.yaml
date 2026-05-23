@@ -1,0 +1,12 @@
+name: exec_grounded
+binary_weight: 1.0
+shaped_weight: 0.2
+shaped_decay_steps: 2000
+edit_size_penalty_lambda: 0.001
+lint_penalty_mu: 0.05
+no_patch_penalty: -0.1
+test_timeout_penalty: -0.05
+prm:
+  enabled: false
+  model: null
+  weight: 0.0
