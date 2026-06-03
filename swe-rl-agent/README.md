@@ -77,4 +77,3 @@ docs/           # architecture, reward design, GRPO notes, runbook
 - **Isolation.** Containers are ephemeral, resource-capped, network-disabled post-install.
 - **Cost guardrails.** `MAX_DOLLARS_PER_RUN` halts the rollout pool when projected cost exceeds the cap.
 
-See [CLAUDE.md](CLAUDE.md) and [prompt.md](../prompt.md) at the project root for the full operating contract.
