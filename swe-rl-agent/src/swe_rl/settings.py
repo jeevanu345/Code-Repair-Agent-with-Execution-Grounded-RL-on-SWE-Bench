@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minio12345"
     minio_bucket: str = "swe-rl"
 
+    # A pool budget is intentionally separate from the per-rollout cap.  Zero
+    # priced local endpoints keep this disabled by default.
+    max_dollars_per_pool: float | None = Field(None, ge=0)
+
     # Observability
     sentry_dsn: str | None = None
     wandb_api_key: str | None = None

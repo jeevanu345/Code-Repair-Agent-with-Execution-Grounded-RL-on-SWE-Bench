@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS trajectories (
 );
 CREATE INDEX IF NOT EXISTS idx_traj_instance ON trajectories(instance_id);
 CREATE INDEX IF NOT EXISTS idx_traj_ckpt ON trajectories(checkpoint_sha);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_trajectory_identity
+    ON trajectories (instance_id, seed, COALESCE(checkpoint_sha, ''));
 
 CREATE TABLE IF NOT EXISTS rewards (
     id SERIAL PRIMARY KEY,

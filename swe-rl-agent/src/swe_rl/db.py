@@ -11,6 +11,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Index,
     String,
     Text,
     create_engine,
@@ -68,6 +69,15 @@ class Trajectory(Base):
     storage_path: Mapped[str] = mapped_column(String)  # JSONL on disk / MinIO
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     rewards: Mapped[list[Reward]] = relationship(back_populates="trajectory")
+    __table_args__ = (
+        Index(
+            "uq_trajectory_identity",
+            "instance_id",
+            "seed",
+            func.coalesce(checkpoint_sha, ""),
+            unique=True,
+        ),
+    )
 
 
 class Reward(Base):
@@ -108,23 +118,34 @@ def init_db(url: str | None = None) -> None:
 
 
 def get_session(url: str | None = None) -> Session:
+    """Return a short-lived session for use in a ``with`` block."""
     return Session(make_engine(url))
 
 
-def save_trajectory(session: Session, traj_data: dict[str, Any], rewards: dict[str, float], storage_path: str) -> None:
+def save_trajectory(
+    session: Session,
+    traj_data: dict[str, Any],
+    rewards: dict[str, float],
+    storage_path: str,
+) -> None:
     """Save a trajectory and its rewards to PostgreSQL."""
     # Ensure instance exists
     inst_id = traj_data["instance_id"]
     if not session.query(Instance).filter_by(id=inst_id).first():
-        session.add(Instance(
-            id=inst_id,
-            repo=traj_data.get("metadata", {}).get("repo", ""),
-            base_commit=traj_data.get("metadata", {}).get("base_commit", ""),
-            problem_statement="",
-            fail_to_pass=[],
-            pass_to_pass=[],
-        ))
-        session.commit()
+        metadata = traj_data.get("metadata", {})
+        session.add(
+            Instance(
+                id=inst_id,
+                repo=metadata.get("repo", ""),
+                base_commit=metadata.get("base_commit", ""),
+                problem_statement=metadata.get("problem_statement", ""),
+                fail_to_pass=metadata.get("fail_to_pass", []),
+                pass_to_pass=metadata.get("pass_to_pass", []),
+                test_patch=metadata.get("test_patch"),
+                environment_setup_commit=metadata.get("environment_setup_commit"),
+            )
+        )
+        session.flush()
 
     traj_id = traj_data["trajectory_id"]
     if not session.query(Trajectory).filter_by(id=traj_id).first():
@@ -152,3 +173,15 @@ def save_trajectory(session: Session, traj_data: dict[str, Any], rewards: dict[s
             session.add(r)
         
         session.commit()
+
+
+def trajectory_exists(
+    session: Session, *, instance_id: str, seed: int, checkpoint_sha: str | None
+) -> bool:
+    """Return whether this exact logical rollout has already been persisted."""
+    query = session.query(Trajectory).filter_by(instance_id=instance_id, seed=seed)
+    if checkpoint_sha is None:
+        query = query.filter(Trajectory.checkpoint_sha.is_(None))
+    else:
+        query = query.filter_by(checkpoint_sha=checkpoint_sha)
+    return query.first() is not None

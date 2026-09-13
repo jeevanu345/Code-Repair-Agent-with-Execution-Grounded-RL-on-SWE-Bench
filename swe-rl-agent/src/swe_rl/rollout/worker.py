@@ -18,6 +18,7 @@ from swe_rl.data.instance_schema import SWEBenchInstance
 from swe_rl.observability.logging import get_logger
 from swe_rl.observability.metrics import METRICS
 from swe_rl.reward.exec_reward import compute_exec_reward
+from swe_rl.reward.prm import PRMScorer
 from swe_rl.reward.shaped_reward import ShapedRewardConfig, compute_shaped_reward
 from swe_rl.sandbox.docker_runner import DockerRunner
 from swe_rl.sandbox.repo_setup import REPO_DIR, setup_repo
@@ -67,8 +68,10 @@ def run_rollout(
                 sandbox_image_digest=handle.image_digest,
                 checkpoint_sha=checkpoint_sha,
             )
+            traj.metadata.update(_instance_metadata(instance))
             traj.metadata["setup_failed"] = True
             traj.metadata["install_log"] = setup.install_log[-4000:]
+            traj.finished_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             traj.write_jsonl(output_dir)
             return RolloutResult(
                 trajectory=traj,
@@ -90,11 +93,9 @@ def run_rollout(
         )
         traj.metadata.update(
             {
-                "base_commit": instance.base_commit,
-                "repo": instance.repo,
                 "model_revision": settings.model_revision,
                 "network_disabled": handle.network_disabled,
-            }
+            } | _instance_metadata(instance)
         )
 
         ctx = ToolContext(
@@ -127,14 +128,20 @@ def run_rollout(
                 patch_apply_ok = False
             traj.metadata["mode"] = "gold_patch" if apply_gold_patch else "candidate_patch"
         else:
-            run_react(
-                llm=llm,
-                ctx=ctx,
-                instance=instance,
-                trajectory=traj,
-                config=react_config,
-                cost=cost,
-            )
+            try:
+                run_react(
+                    llm=llm,
+                    ctx=ctx,
+                    instance=instance,
+                    trajectory=traj,
+                    config=react_config,
+                    cost=cost,
+                )
+            except Exception as exc:
+                # A cost limit or unavailable endpoint must produce a saved,
+                # zero-reward trajectory rather than silently dropping work.
+                traj.metadata["agent_failed"] = type(exc).__name__
+                traj.metadata["agent_error"] = str(exc)[:1000]
 
         # Capture diff against the baseline commit we made during setup.
         diff = runner.commit_diff(handle, repo_dir=REPO_DIR)
@@ -175,11 +182,15 @@ def run_rollout(
         if not test_patch_ok or not patch_apply_ok:
             exec_r.resolved = False
             exec_r.value = 0.0
+        prm_score = PRMScorer((shaped_cfg or ShapedRewardConfig()).prm).score(
+            [{"role": message.role, "content": message.content} for message in traj.messages]
+        )
         shaped = compute_shaped_reward(
             exec_r,
             patch=diff,
             timed_out=f2p_results.timed_out or p2p_results.timed_out,
             config=shaped_cfg,
+            prm_score=prm_score,
         )
         reward = (
             exec_r.value
@@ -192,26 +203,24 @@ def run_rollout(
         traj.finished_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         path = traj.write_jsonl(output_dir)
         
-        # Upload to MinIO
-        s3_path = f"s3://swe-rl-trajectories/{traj.trajectory_id}.jsonl"
+        # Upload to the configured MinIO bucket. Failure is explicit in the
+        # trajectory metadata but does not discard the local durable artifact.
+        s3_path = str(path)
         try:
             from minio import Minio
-            from urllib.parse import urlparse
-            if hasattr(settings, 's3_endpoint_url') and settings.s3_endpoint_url:
-                parsed = urlparse(settings.s3_endpoint_url)
-                client = Minio(
-                    parsed.netloc,
-                    access_key=getattr(settings, 'aws_access_key_id', 'minioadmin'),
-                    secret_key=getattr(settings, 'aws_secret_access_key', 'minioadmin'),
-                    secure=parsed.scheme == 'https'
-                )
-                bucket = "swe-rl-trajectories"
-                if not client.bucket_exists(bucket):
-                    client.make_bucket(bucket)
-                client.fput_object(bucket, f"{traj.trajectory_id}.jsonl", str(path))
+            client = Minio(
+                settings.minio_endpoint,
+                access_key=settings.minio_access_key,
+                secret_key=settings.minio_secret_key,
+                secure=False,
+            )
+            if not client.bucket_exists(settings.minio_bucket):
+                client.make_bucket(settings.minio_bucket)
+            client.fput_object(settings.minio_bucket, f"{traj.trajectory_id}.jsonl", str(path))
+            s3_path = f"s3://{settings.minio_bucket}/{traj.trajectory_id}.jsonl"
         except Exception as e:
             _log.warning("rollout.minio_upload_failed", error=str(e))
-            s3_path = str(path)  # fallback to local path
+            traj.metadata["object_storage_error"] = str(e)[:500]
 
         # Save to PostgreSQL
         try:
@@ -247,3 +256,16 @@ def _empty_results() -> Any:
     from swe_rl.sandbox.test_executor import TestResults
 
     return TestResults()
+
+
+def _instance_metadata(instance: SWEBenchInstance) -> dict[str, Any]:
+    """Persist the evaluation identity required for trustworthy replay/audit."""
+    return {
+        "repo": instance.repo,
+        "base_commit": instance.base_commit,
+        "problem_statement": instance.problem_statement,
+        "fail_to_pass": instance.fail_to_pass,
+        "pass_to_pass": instance.pass_to_pass,
+        "test_patch": instance.test_patch,
+        "environment_setup_commit": instance.environment_setup_commit,
+    }

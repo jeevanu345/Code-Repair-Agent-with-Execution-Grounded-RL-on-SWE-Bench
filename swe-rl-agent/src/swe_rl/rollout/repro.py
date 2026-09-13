@@ -13,7 +13,7 @@ from typing import Any
 
 from swe_rl.agent.llm_client import LLMClient, LLMResponse
 from swe_rl.agent.react_loop import ReactConfig, run_react
-from swe_rl.agent.trajectory import Trajectory
+from swe_rl.agent.trajectory import Message, Trajectory
 from swe_rl.data.swebench_loader import load_one
 from swe_rl.observability.logging import get_logger
 from swe_rl.rollout.worker import run_rollout
@@ -24,22 +24,30 @@ _log = get_logger(__name__)
 class MockLLMClient(LLMClient):
     """Mocks the LLM by yielding exact responses recorded in a trajectory."""
     
-    def __init__(self, recorded_messages: list[dict[str, Any]]):
+    def __init__(self, recorded_messages: list[Message]):
         super().__init__(base_url="", api_key="", model="mock")
         # filter to just the assistant messages from the original trajectory
         self.assistant_responses = [
-            m["content"] for m in recorded_messages if m["role"] == "assistant"
+            m.content for m in recorded_messages if m.role == "assistant"
         ]
         self.idx = 0
 
     def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> LLMResponse:
         if self.idx >= len(self.assistant_responses):
             _log.warning("mock_llm.out_of_responses")
-            return LLMResponse(text='{"tool": "finish", "arguments": {}}', tokens_in=0, tokens_out=0)
+            return LLMResponse(
+                text='{"tool": "finish", "arguments": {}}',
+                tokens_in=0,
+                tokens_out=0,
+                finish_reason="stop",
+                raw={},
+            )
         
         text = self.assistant_responses[self.idx]
         self.idx += 1
-        return LLMResponse(text=text, tokens_in=0, tokens_out=0)
+        return LLMResponse(
+            text=text, tokens_in=0, tokens_out=0, finish_reason="stop", raw={}
+        )
 
 
 def replay_trajectory(path: Path, output_dir: Path) -> None:
@@ -65,7 +73,10 @@ def replay_trajectory(path: Path, output_dir: Path) -> None:
         output_dir=output_dir,
     )
     
-    # Compare outcomes
+    # The image digest, patch, terminal reward and tool sequence are replay
+    # invariants. Timestamps and raw output may differ, so they are not.
+    if result.trajectory.sandbox_image_digest != traj.sandbox_image_digest:
+        raise RuntimeError("Replay used a different sandbox image digest.")
     if result.final_patch != traj.final_patch:
         _log.error("repro.patch_mismatch")
         print("Original patch:")
@@ -73,6 +84,12 @@ def replay_trajectory(path: Path, output_dir: Path) -> None:
         print("Replayed patch:")
         print(result.final_patch)
         raise RuntimeError("Replay diverged from recorded trajectory.")
+    if result.reward != traj.reward:
+        raise RuntimeError("Replay produced a different terminal reward.")
+    original_calls = [(call.tool, call.arguments) for call in traj.tool_calls]
+    replayed_calls = [(call.tool, call.arguments) for call in result.trajectory.tool_calls]
+    if original_calls != replayed_calls:
+        raise RuntimeError("Replay produced a different tool-call sequence.")
     
     _log.info(
         "repro.success", 

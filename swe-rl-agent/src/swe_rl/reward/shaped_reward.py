@@ -11,9 +11,10 @@ decayed over training to push the model from partial credit to full resolution.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from swe_rl.reward.exec_reward import ExecRewardResult
+from swe_rl.reward.prm import PRMConfig
 from swe_rl.utils.patch import is_empty_patch, patch_stats
 
 
@@ -23,6 +24,11 @@ class ShapedRewardConfig:
     lint_penalty_mu: float = 0.05
     no_patch_penalty: float = -0.1
     test_timeout_penalty: float = -0.05
+    prm: PRMConfig = field(default_factory=PRMConfig)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.prm, dict):
+            self.prm = PRMConfig(**self.prm)
 
 
 @dataclass
@@ -40,6 +46,7 @@ def compute_shaped_reward(
     patch: str,
     timed_out: bool,
     lint_errors: int = 0,
+    prm_score: float = 0.0,
     config: ShapedRewardConfig | None = None,
 ) -> ShapedRewardResult:
     cfg = config or ShapedRewardConfig()
@@ -52,7 +59,9 @@ def compute_shaped_reward(
     no_patch = cfg.no_patch_penalty if is_empty_patch(patch) else 0.0
     timeout_pen = cfg.test_timeout_penalty if timed_out else 0.0
 
-    value = base - size_penalty - lint_penalty + no_patch + timeout_pen
+    bounded_prm = min(1.0, max(0.0, prm_score))
+    prm_bonus = cfg.prm.weight * bounded_prm if cfg.prm.enabled else 0.0
+    value = base - size_penalty - lint_penalty + no_patch + timeout_pen + prm_bonus
 
     return ShapedRewardResult(
         value=value,
@@ -62,6 +71,7 @@ def compute_shaped_reward(
             "lint_penalty": lint_penalty,
             "no_patch": no_patch,
             "timeout_penalty": timeout_pen,
+            "prm_bonus": prm_bonus,
             "files": float(files),
             "lines_added": float(added),
             "lines_removed": float(removed),
