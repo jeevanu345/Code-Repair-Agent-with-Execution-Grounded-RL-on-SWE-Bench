@@ -37,8 +37,7 @@
                 └───────┬────────┘
                         ▼
                 ┌────────────────┐
-                │ replay_buffer  │   Parquet shards on disk / S3
-                │ + Postgres idx │
+                │ replay_buffer  │   Parquet shards on local disk
                 └───────┬────────┘
                         │ groups of K rollouts per instance
                         ▼
@@ -49,7 +48,7 @@
                         │ LoRA adapter / full weights
                         ▼
                 ┌────────────────┐
-                │ learner_sync   │ ──▶ vLLM /v1/load_lora_adapter
+                │ learner_sync   │ ──▶ optional vLLM LoRA endpoint
                 └────────────────┘
 ```
 
@@ -78,7 +77,7 @@ All randomness derives from a single `seed`. The rollout records:
 - `base_commit` of the target repo
 - container & host tool versions
 
-`make repro RUN_ID=...` re-runs with these recorded values.
+`make repro RUN_ID=...` currently inspects these recorded values. Exact execution replay is not implemented, and seeded model generation is not guaranteed deterministic across runtimes or hardware.
 
 ## Failure modes & recovery
 
@@ -88,9 +87,9 @@ All randomness derives from a single `seed`. The rollout records:
 | Install step nonzero | `repo_setup` log | continue — many SWE-bench installs are noisy but functional |
 | Test parse miss | `_parse_json_report` empty + `_parse_verbose` empty | treat all as `missing` (counts as fail in reward) |
 | Stuck rollout | wallclock > sandbox cap | container teardown by reaper, trajectory marked timed_out |
-| Cost cap exceeded | `CostMeter.add` raises `CostCapExceeded` | rollout pool drains, learner stops requesting new rollouts |
+| Cost cap exceeded | `CostMeter.add` raises `CostCapExceeded` | the current rollout stops; pool-wide coordination is not implemented |
 | Reward function bug | Test: gold patch → 1.0, no-op → 0.0 | property-tested in `tests/unit/test_exec_reward.py` |
 
-## Deviations from prompt.md
+## Incomplete integrations
 
-None yet. Record any future deviation here with rationale and date.
+PostgreSQL, Redis, MinIO, Ray lifecycle management, exact replay, and full/refresh-safe vLLM weight synchronization are scaffolds rather than a complete production control plane.

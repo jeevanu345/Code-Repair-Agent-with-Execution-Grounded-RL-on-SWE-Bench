@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unidiff import PatchSet
+from unidiff.patch import PatchSet
 
 
 def parse_patch(text: str) -> PatchSet:

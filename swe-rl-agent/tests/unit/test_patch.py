@@ -1,6 +1,5 @@
 from swe_rl.utils.patch import is_empty_patch, patch_stats
 
-
 SAMPLE = """\
 diff --git a/foo.py b/foo.py
 index abcd123..def4567 100644

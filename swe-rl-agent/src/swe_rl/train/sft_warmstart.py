@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from swe_rl.observability.logging import get_logger
+from swe_rl.settings import settings
 
 _log = get_logger(__name__)
 
@@ -71,7 +72,7 @@ def run_sft(dataset: Any, config: SFTConfig) -> Path:
         max_length=config.max_seq_length,
         save_strategy="epoch",
         logging_steps=10,
-        report_to=["wandb"],
+        report_to=["wandb"] if settings.wandb_api_key else "none",
         dataset_text_field=None,  # we'll format manually
     )
 

@@ -20,18 +20,51 @@ class PRMConfig:
 class PRMScorer:
     def __init__(self, config: PRMConfig) -> None:
         self.config = config
-        self._model = None
-        if config.enabled and config.model_path:
-            self._load()
-
-    def _load(self) -> None:
-        # Intentionally lazy. Real PRM would be a small reward model fine-tuned
-        # to predict resolved outcome from partial trajectories.
-        # Left as an extension point per Phase I.
-        return None
+        # Rather than loading heavy weights locally, the PRM is hosted on a vLLM instance.
+        # We will use the model_path as the base URL or rely on global settings.
+        from swe_rl.settings import settings
+        self.base_url = self.config.model_path or settings.vllm_base_url
+        self.api_key = settings.vllm_api_key
 
     def score(self, messages: list[dict[str, str]]) -> float:
-        if not self.config.enabled or self._model is None:
+        if not self.config.enabled or not self.base_url:
             return 0.0
-        # Placeholder for the actual PRM forward pass.
-        return 0.0
+            
+        import httpx
+        try:
+            # We assume a standard chat completions endpoint that acts as a judge,
+            # or a custom /score endpoint if the PRM is a classification model.
+            # Here we structure it as a prompt to the judge model.
+            judge_prompt = [
+                {"role": "system", "content": "You are a Process Reward Model. Evaluate the last step of the trajectory. Output a score between 0.0 and 1.0 representing the likelihood of success."},
+            ] + messages
+            
+            # This is a structural implementation that sends the request to the vLLM server.
+            # In a real environment, we would parse specific tokens or logprobs.
+            response = httpx.post(
+                f"{self.base_url.rstrip('/')}/v1/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json={
+                    "model": "prm-model", # The specific PRM model name
+                    "messages": judge_prompt,
+                    "max_tokens": 10,
+                    "temperature": 0.0
+                },
+                timeout=10.0
+            )
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"].strip()
+            
+            # Simple parsing of the score
+            import re
+            match = re.search(r"(\d+\.\d+)", content)
+            if match:
+                return float(match.group(1))
+            return 0.0
+        except Exception as e:
+            # PRM scoring shouldn't crash the rollout
+            from swe_rl.observability.logging import get_logger
+            _log = get_logger(__name__)
+            _log.warning("prm.score_failed", error=str(e))
+            return 0.0

@@ -17,8 +17,8 @@ dependencies = [
   "trl>=0.12.0",
   "accelerate>=1.0.0",
   "peft>=0.13.0",
-  "datasets>=3.0.0",
-  "huggingface-hub>=0.26.0",
+  "datasets>=3.0.0,<4.0.0",
+  "huggingface-hub>=0.26.0,<1.0.0",
   "vllm>=0.6.3 ; sys_platform == 'linux'",
   "ray[default]>=2.37.0",
   "docker>=7.1.0",
@@ -47,7 +47,8 @@ dependencies = [
   "uvicorn[standard]>=0.31.0",
   "httpx>=0.27.2",
   "anyio>=4.6.0",
-  "swebench>=2.1.0",
+  "swebench>=2.1.0,<3.0.0",
+  "modal<1.0.0",
   "ruff>=0.6.9",
 ]
 
@@ -79,6 +80,14 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "B", "UP", "N", "SIM", "PTH", "RET"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+"src/swe_rl/cli.py" = ["B008", "B009"]
+"src/swe_rl/dashboard/app.py" = ["B009"]
+"src/swe_rl/rollout/ray_pool.py" = ["B009"]
+"src/swe_rl/sandbox/docker_runner.py" = ["B009"]
+"src/swe_rl/sandbox/test_executor.py" = ["B010"]
+"src/swe_rl/utils/cost.py" = ["N818"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
@@ -97,3 +106,7 @@ markers = [
   "gpu: requires CUDA",
 ]
 addopts = "-ra --strict-markers --tb=short"
+filterwarnings = [
+  "ignore:.*modal\\.Mount usage will soon be deprecated.*:DeprecationWarning",
+  "ignore:.*modal\\.Mount usage will soon be deprecated.*:UserWarning"
+]

@@ -69,7 +69,7 @@ def _parse_json_report(blob: str) -> dict[str, TestOutcome]:
         if not nid or not outcome:
             continue
         if outcome in {"passed", "failed", "error", "skipped"}:
-            out[_normalize(nid)] = outcome  # type: ignore[assignment]
+            out[_normalize(nid)] = outcome
     return out
 
 
@@ -107,22 +107,17 @@ class TestExecutor:
         if not test_ids:
             return TestResults()
 
-        # Try json-report; install plugin lazily (silent fail -> verbose fallback).
+        # pytest-json-report is baked into the sandbox image. Never install here:
+        # the network must already be disabled before agent and reward execution.
         cmd_parts = ["cd", shlex.quote(REPO_DIR), "&&"]
         if prefer_json_report:
-            cmd_parts += [
-                "python -m pip install --quiet pytest-json-report >/dev/null 2>&1 || true",
-                "&&",
-            ]
             pytest_cmd = (
                 f"python -m pytest --json-report --json-report-file={JSON_REPORT_PATH} "
-                f"-q --tb=short --no-header "
-                + " ".join(shlex.quote(t) for t in test_ids)
+                f"-q --tb=short --no-header " + " ".join(shlex.quote(t) for t in test_ids)
             )
         else:
-            pytest_cmd = (
-                "python -m pytest -v --tb=short --no-header "
-                + " ".join(shlex.quote(t) for t in test_ids)
+            pytest_cmd = "python -m pytest -v --tb=short --no-header " + " ".join(
+                shlex.quote(t) for t in test_ids
             )
         cmd_parts.append(pytest_cmd)
         full_cmd = " ".join(cmd_parts)
@@ -153,6 +148,9 @@ class TestExecutor:
             duration_s=result.duration_s,
             timed_out=result.timed_out,
         )
+
+
+setattr(TestResults, "__test__", False)
 
 
 def _count_by_outcome(outcomes: dict[str, TestOutcome]) -> dict[str, int]:

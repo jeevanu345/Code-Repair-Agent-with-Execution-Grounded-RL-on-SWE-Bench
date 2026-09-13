@@ -24,7 +24,7 @@ def render_report(
     n_resolved = int(harness_report.get("resolved_instances", 0))
     rate = n_resolved / n if n else 0.0
 
-    by_repo = defaultdict(lambda: {"n": 0, "resolved": 0})
+    by_repo: defaultdict[str, dict[str, int]] = defaultdict(lambda: {"n": 0, "resolved": 0})
     resolved_ids = set(harness_report.get("resolved_ids", []))
     for p in preds:
         repo = p["instance_id"].split("__")[0] if "__" in p["instance_id"] else "?"

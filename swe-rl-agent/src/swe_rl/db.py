@@ -7,7 +7,6 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
-    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -48,7 +47,7 @@ class ModelCheckpoint(Base):
     path: Mapped[str] = mapped_column(String)
     config: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    eval_runs: Mapped[list["EvalRun"]] = relationship(back_populates="checkpoint")
+    eval_runs: Mapped[list[EvalRun]] = relationship(back_populates="checkpoint")
 
 
 class Trajectory(Base):
@@ -68,7 +67,7 @@ class Trajectory(Base):
     final_patch: Mapped[str | None] = mapped_column(Text, nullable=True)
     storage_path: Mapped[str] = mapped_column(String)  # JSONL on disk / MinIO
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    rewards: Mapped[list["Reward"]] = relationship(back_populates="trajectory")
+    rewards: Mapped[list[Reward]] = relationship(back_populates="trajectory")
 
 
 class Reward(Base):
@@ -110,3 +109,46 @@ def init_db(url: str | None = None) -> None:
 
 def get_session(url: str | None = None) -> Session:
     return Session(make_engine(url))
+
+
+def save_trajectory(session: Session, traj_data: dict[str, Any], rewards: dict[str, float], storage_path: str) -> None:
+    """Save a trajectory and its rewards to PostgreSQL."""
+    # Ensure instance exists
+    inst_id = traj_data["instance_id"]
+    if not session.query(Instance).filter_by(id=inst_id).first():
+        session.add(Instance(
+            id=inst_id,
+            repo=traj_data.get("metadata", {}).get("repo", ""),
+            base_commit=traj_data.get("metadata", {}).get("base_commit", ""),
+            problem_statement="",
+            fail_to_pass=[],
+            pass_to_pass=[],
+        ))
+        session.commit()
+
+    traj_id = traj_data["trajectory_id"]
+    if not session.query(Trajectory).filter_by(id=traj_id).first():
+        t = Trajectory(
+            id=traj_id,
+            instance_id=inst_id,
+            checkpoint_sha=traj_data.get("checkpoint_sha"),
+            seed=traj_data["seed"],
+            temperature=traj_data["temperature"],
+            top_p=traj_data["top_p"],
+            sandbox_image_digest=traj_data["sandbox_image_digest"],
+            n_steps=traj_data["n_steps"],
+            final_patch=traj_data.get("final_patch"),
+            storage_path=storage_path,
+        )
+        session.add(t)
+        
+        for kind, val in rewards.items():
+            r = Reward(
+                trajectory_id=traj_id,
+                kind=kind,
+                value=val,
+                details=traj_data.get("reward_details", {}).get(kind, {}),
+            )
+            session.add(r)
+        
+        session.commit()

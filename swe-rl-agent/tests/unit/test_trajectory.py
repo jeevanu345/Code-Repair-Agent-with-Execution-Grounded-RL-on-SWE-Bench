@@ -15,7 +15,9 @@ def test_round_trip_jsonl(tmp_path: Path):
     t.add_message("system", "sys")
     t.add_message("user", "task")
     t.add_message("assistant", '{"tool": "bash", "arguments": {"command": "ls"}}')
-    t.add_tool_call(step=1, tool="bash", arguments={"command": "ls"}, result={"ok": True}, duration_s=0.1)
+    t.add_tool_call(
+        step=1, tool="bash", arguments={"command": "ls"}, result={"ok": True}, duration_s=0.1
+    )
     t.final_patch = "diff..."
     t.reward = 1.0
     path = t.write_jsonl(tmp_path)

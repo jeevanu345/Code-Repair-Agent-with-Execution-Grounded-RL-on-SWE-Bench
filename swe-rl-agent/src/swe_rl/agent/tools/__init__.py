@@ -1,12 +1,12 @@
 """Agent tool registry. Each tool exposes pydantic input + JSON-schema description + ToolResult."""
 
-from swe_rl.agent.tools.base import Tool, ToolResult, ToolContext
+from swe_rl.agent.tools.base import Tool, ToolContext, ToolResult
 from swe_rl.agent.tools.bash import BashTool
-from swe_rl.agent.tools.file_edit import FileEditTool, FileWriteTool, FileReadTool
+from swe_rl.agent.tools.file_edit import FileEditTool, FileReadTool, FileWriteTool
+from swe_rl.agent.tools.finish import FinishTool
 from swe_rl.agent.tools.grep import GrepTool
 from swe_rl.agent.tools.repo_map import RepoMapTool
 from swe_rl.agent.tools.test_run import TestRunTool
-from swe_rl.agent.tools.finish import FinishTool
 
 
 def default_toolset(ctx: ToolContext) -> list[Tool]:

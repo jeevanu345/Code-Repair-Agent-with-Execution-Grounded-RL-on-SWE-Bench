@@ -15,15 +15,17 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from swe_rl.agent.react_loop import ReactConfig
 from swe_rl.data.instance_schema import SWEBenchInstance
 from swe_rl.observability.logging import get_logger
 from swe_rl.observability.metrics import METRICS
 from swe_rl.reward.shaped_reward import ShapedRewardConfig
+from swe_rl.settings import settings
 
 _log = get_logger(__name__)
 
@@ -63,27 +65,51 @@ def make_reward_fn(
     Each prompt is keyed (in metadata) to a SWEBenchInstance; the reward function
     submits the K completions to the rollout pool and returns binary rewards.
     """
-    from swe_rl.rollout.ray_pool import PoolConfig, submit_pool
+    from swe_rl.agent.llm_client import LLMClient
+    from swe_rl.rollout.worker import run_rollout
 
     def reward(prompts: list[str], completions: list[str], **kwargs: Any) -> list[float]:
-        instance_ids: list[str] = kwargs.get("instance_ids") or _infer_instance_ids(prompts)
-        instances = [instances_by_id[i] for i in instance_ids]
-        # Run rollouts in parallel; the *completions* serve as initial assistant
-        # plans which the rollout worker may continue or honor as final patch.
-        # In practice with GRPO we re-run the agent per completion seed.
-        results = submit_pool(
-            instances,
-            pool=PoolConfig(n_workers=min(len(instances), 8)),
-            react_config=react_config,
-            output_dir=output_dir,
-            model_name=react_config.__dict__.get("model_name", ""),
-            vllm_base_url=vllm_base_url,
-            vllm_api_key=vllm_api_key,
-            seeds_per_instance=1,
+        instance_ids: list[str] = (
+            kwargs.get("instance_ids") or kwargs.get("instance_id") or _infer_instance_ids(prompts)
         )
-        return [float(r["reward"]) for r in results]
+        if len(instance_ids) != len(completions):
+            raise ValueError("each completion must have exactly one instance_id")
+        llm = LLMClient(base_url=vllm_base_url, api_key=vllm_api_key)
+        rewards: list[float] = []
+        try:
+            for index, (instance_id, completion) in enumerate(
+                zip(instance_ids, completions, strict=True)
+            ):
+                if instance_id not in instances_by_id:
+                    raise KeyError(f"unknown instance_id in reward batch: {instance_id}")
+                patch = _completion_text(completion)
+                result = run_rollout(
+                    instances_by_id[instance_id],
+                    llm=llm,
+                    react_config=ReactConfig(
+                        **{**react_config.__dict__, "seed": react_config.seed + index}
+                    ),
+                    output_dir=output_dir,
+                    shaped_cfg=shaped_cfg,
+                    candidate_patch=patch,
+                )
+                rewards.append(float(result.reward))
+        finally:
+            llm.close()
+        return rewards
 
     return reward
+
+
+def _completion_text(completion: Any) -> str:
+    if isinstance(completion, str):
+        return completion
+    if isinstance(completion, list):
+        return "\n".join(
+            str(item.get("content", "")) if isinstance(item, dict) else str(item)
+            for item in completion
+        )
+    raise TypeError(f"unsupported completion type: {type(completion).__name__}")
 
 
 def _infer_instance_ids(prompts: list[str]) -> list[str]:
@@ -91,10 +117,11 @@ def _infer_instance_ids(prompts: list[str]) -> list[str]:
     caller didn't pass them explicitly via kwargs."""
     out: list[str] = []
     for p in prompts:
-        if "instance_id=" in p:
-            out.append(p.split("instance_id=", 1)[1].split()[0])
-        else:
-            out.append("__unknown__")
+        try:
+            parsed = json.loads(p)
+        except json.JSONDecodeError:
+            parsed = {}
+        out.append(str(parsed.get("instance_id", "__unknown__")))
     return out
 
 
@@ -133,7 +160,7 @@ def run_grpo(
         logging_steps=10,
         bf16=config.bf16,
         seed=config.seed,
-        report_to=["wandb"],
+        report_to=["wandb"] if settings.wandb_api_key else "none",
         num_generations=config.group_size,
         beta=config.kl_coef,
     )
@@ -178,6 +205,7 @@ def build_train_prompts(instances: list[SWEBenchInstance]) -> list[dict[str, Any
                         "instance_id": inst.instance_id,
                         "repo": inst.repo,
                         "problem_statement": inst.problem_statement[:4000],
+                        "response_format": "Return only a git-compatible unified diff.",
                     }
                 ),
                 "instance_id": inst.instance_id,

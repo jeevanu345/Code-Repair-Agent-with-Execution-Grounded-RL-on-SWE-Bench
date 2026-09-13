@@ -1,7 +1,7 @@
 import pytest
 
-from swe_rl.utils.cost import CostCapExceeded, CostMeter
 from swe_rl.settings import settings
+from swe_rl.utils.cost import CostCapExceeded, CostMeter
 
 
 def test_cost_meter_accumulates():
@@ -19,3 +19,9 @@ def test_cost_meter_caps(monkeypatch):
     m = CostMeter()
     with pytest.raises(CostCapExceeded):
         m.add(100_000, 0)
+    assert m.tokens_in == 0
+
+
+def test_cost_meter_rejects_negative_counts():
+    with pytest.raises(ValueError):
+        CostMeter().add(-1, 0)

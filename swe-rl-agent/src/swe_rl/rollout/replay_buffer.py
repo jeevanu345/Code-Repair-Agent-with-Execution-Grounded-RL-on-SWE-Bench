@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
 from swe_rl.agent.trajectory import Trajectory
-
 
 _SCHEMA = pa.schema(
     [
@@ -49,7 +49,11 @@ class ReplayBuffer:
         self._buffer: list[dict[str, Any]] = []
 
     def _row_for(self, traj: Trajectory) -> dict[str, Any]:
-        resolved = bool(traj.reward_details.get("exec", {}).get("resolved", False)) if traj.reward_details else False
+        resolved = (
+            bool(traj.reward_details.get("exec", {}).get("resolved", False))
+            if traj.reward_details
+            else False
+        )
         return {
             "trajectory_id": traj.trajectory_id,
             "instance_id": traj.instance_id,

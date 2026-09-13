@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -59,7 +59,7 @@ class Trajectory:
         model_name: str,
         sandbox_image_digest: str,
         checkpoint_sha: str | None = None,
-    ) -> "Trajectory":
+    ) -> Trajectory:
         return cls(
             trajectory_id=uuid.uuid4().hex,
             instance_id=instance_id,
@@ -69,17 +69,25 @@ class Trajectory:
             model_name=model_name,
             checkpoint_sha=checkpoint_sha,
             sandbox_image_digest=sandbox_image_digest,
-            started_at=datetime.now(timezone.utc).isoformat(),
+            started_at=datetime.now(UTC).isoformat(),
         )
 
     def add_message(self, role: str, content: str, *, name: str | None = None) -> None:
         self.messages.append(Message(role=role, content=content, name=name))
 
     def add_tool_call(
-        self, *, step: int, tool: str, arguments: dict[str, Any], result: dict[str, Any], duration_s: float
+        self,
+        *,
+        step: int,
+        tool: str,
+        arguments: dict[str, Any],
+        result: dict[str, Any],
+        duration_s: float,
     ) -> None:
         self.tool_calls.append(
-            ToolCall(step=step, tool=tool, arguments=arguments, result=result, duration_s=duration_s)
+            ToolCall(
+                step=step, tool=tool, arguments=arguments, result=result, duration_s=duration_s
+            )
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -93,7 +101,7 @@ class Trajectory:
         return path
 
     @classmethod
-    def from_jsonl(cls, path: Path) -> "Trajectory":
+    def from_jsonl(cls, path: Path) -> Trajectory:
         with path.open() as f:
             data = json.loads(f.readline())
         msgs = [Message(**m) for m in data.pop("messages", [])]

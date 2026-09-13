@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,9 +34,10 @@ class Settings(BaseSettings):
 
     # Sandbox
     sandbox_image: str = "swe-rl/sandbox:latest"
-    sandbox_mem_gb: int = 4
-    sandbox_cpus: float = 2.0
-    sandbox_wallclock_s: int = 600
+    sandbox_mem_gb: int = Field(4, gt=0)
+    sandbox_cpus: float = Field(2.0, gt=0)
+    sandbox_wallclock_s: int = Field(600, gt=0)
+    sandbox_max_output_bytes: int = Field(2_000_000, gt=0)
     sandbox_disable_network_after_install: bool = True
 
     # Postgres
@@ -64,9 +65,16 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Cost
-    max_dollars_per_run: float = 50.0
-    dollar_per_1k_tokens_in: float = 0.0
-    dollar_per_1k_tokens_out: float = 0.0
+    max_dollars_per_run: float = Field(50.0, ge=0)
+    dollar_per_1k_tokens_in: float = Field(0.0, ge=0)
+    dollar_per_1k_tokens_out: float = Field(0.0, ge=0)
+
+    @field_validator("vllm_host")
+    @classmethod
+    def _local_vllm_only_by_default(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("vllm_host cannot be empty")
+        return value
 
     # Train
     train_output_dir: Path = Path("./outputs")
@@ -74,6 +82,7 @@ class Settings(BaseSettings):
     grpo_group_size: int = 8
     grpo_kl_coef: float = 0.04
     grpo_lr: float = 1e-6
+    swe_rl_allow_heavy_training: bool = False
 
     @property
     def vllm_base_url(self) -> str:

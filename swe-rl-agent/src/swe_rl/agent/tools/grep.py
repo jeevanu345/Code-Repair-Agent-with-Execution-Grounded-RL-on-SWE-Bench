@@ -7,6 +7,7 @@ import shlex
 from pydantic import BaseModel, Field
 
 from swe_rl.agent.tools.base import Tool, ToolResult, truncate
+from swe_rl.agent.tools.file_edit import _resolve
 
 
 class GrepArgs(BaseModel):
@@ -28,7 +29,7 @@ class GrepTool(Tool):
             flags.append("-i")
         if args.glob:
             flags += ["-g", args.glob]
-        target = args.path or "."
+        target = "." if args.path is None else _resolve(".", args.path).removeprefix("./")
         cmd = f"cd {shlex.quote(self.ctx.repo_dir)} && rg {' '.join(shlex.quote(f) for f in flags)} {shlex.quote(args.pattern)} {shlex.quote(target)} || true"
         r = self.ctx.runner.exec(self.ctx.handle, cmd, timeout=30)
         text, truncated = truncate(r.stdout)

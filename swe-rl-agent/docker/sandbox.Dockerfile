@@ -1,5 +1,5 @@
 # Sandbox image: per-instance ephemeral container for SWE-bench rollouts.
-# - Ubuntu 22.04 + Python 3.11
+# - Ubuntu 22.04 + Miniconda
 # - common build/test tooling
 # - non-root user `agent`
 FROM ubuntu:22.04
@@ -38,28 +38,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ripgrep \
         universal-ctags \
         sudo \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        python3.11 \
-        python3.11-dev \
-        python3.11-venv \
-        python3.11-distutils \
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 \
-    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
-    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python -m pip install --upgrade pip setuptools wheel \
-    && python -m pip install \
-        pytest pytest-xdist pytest-timeout \
-        tox \
-        virtualenv \
-        unidiff
+# Install Miniconda
+ENV CONDA_DIR=/opt/conda
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
+    /bin/bash ~/miniconda.sh -b -p /opt/conda && \
+    rm ~/miniconda.sh
+ENV PATH=$CONDA_DIR/bin:$PATH
+
+# Create Conda environments for Python 3.5 through 3.11
+RUN conda create -y -n py35 python=3.5 && \
+    conda create -y -n py36 python=3.6 && \
+    conda create -y -n py37 python=3.7 && \
+    conda create -y -n py38 python=3.8 && \
+    conda create -y -n py39 python=3.9 && \
+    conda create -y -n py310 python=3.10 && \
+    conda create -y -n py311 python=3.11 && \
+    conda clean -afy
+
+# Pre-install SWE-bench test requirements into all environments
+RUN for py in py35 py36 py37 py38 py39 py310 py311; do \
+        $CONDA_DIR/envs/$py/bin/python -m pip install --upgrade pip setuptools wheel && \
+        $CONDA_DIR/envs/$py/bin/python -m pip install pytest pytest-xdist pytest-timeout pytest-json-report tox virtualenv unidiff; \
+    done
 
 RUN useradd -ms /bin/bash agent && \
     mkdir -p /workspace /home/agent/.cache && \
-    chown -R agent:agent /workspace /home/agent
+    chown -R agent:agent /workspace /home/agent /opt/conda
 
 USER agent
 WORKDIR /workspace

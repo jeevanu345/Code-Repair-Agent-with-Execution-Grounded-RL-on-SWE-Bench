@@ -1,3 +1,5 @@
+name: swe-rl-agent
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -5,7 +7,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-swe_rl}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-swe_rl}
       POSTGRES_DB: ${POSTGRES_DB:-swe_rl}
-    ports: ["5432:5432"]
+    ports: ["${POSTGRES_PORT:-5432}:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -16,7 +18,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports: ["6379:6379"]
+    ports: ["${REDIS_PORT:-6379}:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -30,8 +32,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minio12345}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - miniodata:/data
     healthcheck:
@@ -42,7 +44,7 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    ports: ["9090:9090"]
+    ports: ["${PROMETHEUS_PORT:-9090}:9090"]
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
 

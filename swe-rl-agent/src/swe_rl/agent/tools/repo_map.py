@@ -7,6 +7,7 @@ import shlex
 from pydantic import BaseModel, Field
 
 from swe_rl.agent.tools.base import Tool, ToolResult, truncate
+from swe_rl.agent.tools.file_edit import _resolve
 
 
 class RepoMapArgs(BaseModel):
@@ -25,10 +26,11 @@ class RepoMapTool(Tool):
 
     def _run(self, args: RepoMapArgs) -> ToolResult:  # type: ignore[override]
         langs = ",".join(args.languages)
+        target = "." if args.path == "." else _resolve(".", args.path).removeprefix("./")
         cmd = (
             f"cd {shlex.quote(self.ctx.repo_dir)} && "
             f"ctags --languages={shlex.quote(langs)} --kinds-Python=cf "
-            f"-x --_xformat='%-30N %-8K %-40F %4n' -R {shlex.quote(args.path)} 2>/dev/null "
+            f"-x --_xformat='%-30N %-8K %-40F %4n' -R {shlex.quote(target)} 2>/dev/null "
             f"| head -n {args.max_lines}"
         )
         r = self.ctx.runner.exec(self.ctx.handle, cmd, timeout=60)

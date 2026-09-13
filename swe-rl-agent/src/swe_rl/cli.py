@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -28,7 +27,19 @@ app.add_typer(train_app, name="train", help="Training")
 _log = get_logger(__name__)
 
 
+@app.command("dashboard")
+def dashboard(
+    host: str = typer.Option("127.0.0.1", help="Bind address"),
+    port: int = typer.Option(8088, min=1, max=65535),
+) -> None:
+    """Start the read-only local operations dashboard."""
+    import uvicorn
+
+    uvicorn.run("swe_rl.dashboard.app:app", host=host, port=port)
+
+
 # ---------------- db ----------------
+
 
 @db_app.command("migrate")
 def db_migrate() -> None:
@@ -42,6 +53,7 @@ def db_migrate() -> None:
 
 # ---------------- smoke ----------------
 
+
 @smoke_app.command("deps")
 def smoke_deps() -> None:
     """Verify imports + Docker daemon + DB reachable."""
@@ -50,7 +62,7 @@ def smoke_deps() -> None:
     try:
         import docker
 
-        client = docker.from_env()
+        client = getattr(docker, "from_env")()
         client.ping()
         typer.echo("ok: docker daemon reachable")
     except Exception as e:
@@ -84,8 +96,10 @@ def smoke_deps() -> None:
 
 @smoke_app.command("rollout")
 def smoke_rollout(
-    instance_id: Optional[str] = typer.Option(None, help="Specific instance to run"),
-    apply_gold: bool = typer.Option(False, "--gold", help="Apply gold patch instead of running agent"),
+    instance_id: str | None = typer.Option(None, help="Specific instance to run"),
+    apply_gold: bool = typer.Option(
+        False, "--gold", help="Apply gold patch instead of running agent"
+    ),
     output_dir: Path = typer.Option(Path("./outputs/smoke"), help="Trajectory output dir"),
 ) -> None:
     observability.init("smoke")
@@ -103,12 +117,15 @@ def smoke_rollout(
     llm = LLMClient()
     cfg = ReactConfig(max_steps=20, max_test_runs=3)
     output_dir.mkdir(parents=True, exist_ok=True)
-    result = run_rollout(inst, llm=llm, react_config=cfg, output_dir=output_dir, apply_gold_patch=apply_gold)
+    result = run_rollout(
+        inst, llm=llm, react_config=cfg, output_dir=output_dir, apply_gold_patch=apply_gold
+    )
     typer.echo(json.dumps({"reward": result.reward, "resolved": result.resolved}, indent=2))
     sys.exit(0 if result.resolved or result.final_patch else 1)
 
 
 # ---------------- rollout ----------------
+
 
 @rollout_app.command("one")
 def rollout_one(
@@ -130,7 +147,38 @@ def rollout_one(
     typer.echo(json.dumps({"reward": r.reward, "resolved": r.resolved}, indent=2))
 
 
+@rollout_app.command("pool")
+def rollout_pool(
+    output_dir: Path = typer.Option(Path("./outputs/rollouts")),
+    n_workers: int = typer.Option(4, help="Number of Ray workers"),
+    seeds_per_instance: int = typer.Option(1),
+) -> None:
+    """Run a distributed Ray pool to process rollouts."""
+    observability.init("rollout")
+    from swe_rl.agent.react_loop import ReactConfig
+    from swe_rl.data.swebench_loader import load_swebench
+    from swe_rl.rollout.ray_pool import PoolConfig, submit_pool
+
+    # For testing, grab lite
+    instances = list(load_swebench(subset="lite", max_instances=10))
+    
+    cfg = ReactConfig(max_steps=50)
+    pool_cfg = PoolConfig(n_workers=n_workers)
+    
+    submit_pool(
+        instances,
+        pool=pool_cfg,
+        react_config=cfg,
+        output_dir=output_dir,
+        model_name=settings.model_name,
+        vllm_base_url=settings.vllm_base_url,
+        vllm_api_key=settings.vllm_api_key,
+        seeds_per_instance=seeds_per_instance,
+    )
+
+
 # ---------------- eval ----------------
+
 
 @eval_app.command("lite")
 def eval_lite(
@@ -165,9 +213,7 @@ def eval_lite(
     generate_predictions(eval_config=eval_cfg, react_config=react_cfg, llm=llm)
 
     if invoke_harness:
-        report = run_official_harness(
-            output_predictions, subset="lite", run_id=run_id
-        )
+        report = run_official_harness(output_predictions, subset="lite", run_id=run_id)
         rate = resolved_at_1(report)
         render_report(
             run_id=run_id,
@@ -181,11 +227,17 @@ def eval_lite(
 
 # ---------------- train ----------------
 
+
 @train_app.command("sft")
 def train_sft(
     output_dir: Path = typer.Option(Path("./outputs/sft")),
     use_humanevalpack: bool = typer.Option(True),
 ) -> None:
+    if not settings.swe_rl_allow_heavy_training:
+        raise typer.BadParameter(
+            "refusing model download/training; set SWE_RL_ALLOW_HEAVY_TRAINING=true "
+            "only on a prepared GPU host"
+        )
     observability.init("train")
     from swe_rl.data.humanevalpack_loader import load_humanevalpack
     from swe_rl.train.data_assembly import humanevalpack_to_sft
@@ -204,6 +256,11 @@ def train_grpo(
     max_instances: int = typer.Option(50),
     output_dir: Path = typer.Option(Path("./outputs/grpo")),
 ) -> None:
+    if not settings.swe_rl_allow_heavy_training:
+        raise typer.BadParameter(
+            "refusing model download/training; set SWE_RL_ALLOW_HEAVY_TRAINING=true "
+            "only on a prepared GPU host"
+        )
     observability.init("train")
     from swe_rl.agent.react_loop import ReactConfig
     from swe_rl.data.swebench_loader import load_swebench
@@ -225,6 +282,7 @@ def train_grpo(
 
 # ---------------- repro ----------------
 
+
 @app.command("repro")
 def repro(
     run_id: str = typer.Option(...),
@@ -232,15 +290,18 @@ def repro(
 ) -> None:
     """Re-run a recorded trajectory deterministically."""
     observability.init("repro")
-    from swe_rl.agent.trajectory import Trajectory
+    from swe_rl.rollout.repro import replay_trajectory
 
     candidates = list(trajectory_dir.rglob(f"{run_id}*.jsonl"))
     if not candidates:
         typer.echo(f"no trajectory matching {run_id}", err=True)
         raise typer.Exit(1)
-    traj = Trajectory.from_jsonl(candidates[0])
-    typer.echo(json.dumps({"id": traj.trajectory_id, "instance": traj.instance_id, "seed": traj.seed}, indent=2))
-    typer.echo("Replay deterministically re-runs the rollout with the same seed and image digest.")
+    
+    try:
+        replay_trajectory(candidates[0], trajectory_dir / "repro")
+    except Exception as e:
+        typer.echo(f"Replay failed: {e}", err=True)
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

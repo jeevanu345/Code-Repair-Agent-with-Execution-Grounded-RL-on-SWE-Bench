@@ -129,7 +129,7 @@ def run_official_harness(
     Returns the parsed report dict on success.
     """
     try:
-        from swebench.harness.run_evaluation import main as run_eval_main  # type: ignore
+        from swebench.harness.run_evaluation import main as run_eval_main
     except ImportError as e:
         raise RuntimeError(
             "`swebench` is not installed. `pip install swebench` and try again."
@@ -157,7 +157,8 @@ def run_official_harness(
     )
     report_path = Path(f"{run_id}.{predictions_path.stem}.json")
     if report_path.exists():
-        return json.loads(report_path.read_text(encoding="utf-8"))
+        parsed: dict[str, Any] = json.loads(report_path.read_text(encoding="utf-8"))
+        return parsed
     return {"status": "completed", "warning": "report file not found at default path"}
 
 

@@ -13,7 +13,6 @@ from swe_rl.agent.tools import Tool, ToolContext, default_toolset
 from swe_rl.agent.trajectory import Trajectory
 from swe_rl.data.instance_schema import SWEBenchInstance
 from swe_rl.observability.logging import get_logger
-from swe_rl.observability.metrics import METRICS
 from swe_rl.utils.cost import CostMeter
 
 _log = get_logger(__name__)
@@ -74,7 +73,11 @@ def _format_tools_block(tools: list[Tool]) -> str:
     for t in tools:
         items.append(
             json.dumps(
-                {"name": t.name, "description": t.description, "parameters": t.Args.model_json_schema()},
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.Args.model_json_schema(),
+                },
                 indent=2,
             )
         )
@@ -121,7 +124,11 @@ def run_react(
     tools_by_name = {t.name: t for t in default_toolset(ctx)}
     ctx.test_runs_remaining = config.max_test_runs
 
-    system = _format_system(config) + "\n\n# Available tools\n\n" + _format_tools_block(list(tools_by_name.values()))
+    system = (
+        _format_system(config)
+        + "\n\n# Available tools\n\n"
+        + _format_tools_block(list(tools_by_name.values()))
+    )
     intro = _format_intro(instance)
 
     trajectory.add_message("system", system)
@@ -194,5 +201,4 @@ def run_react(
             break
 
     trajectory.n_steps = step
-    METRICS.optimizer_steps_total  # touch (no-op) to keep import live
     return ReactRunResult(finished=finished, reason=reason, n_steps=step, cost=cost)

@@ -41,7 +41,7 @@ resource "aws_ecs_task_definition" "rollout_worker" {
         awslogs-stream-prefix = "rollout"
       }
     }
-    command = ["python", "-m", "swe_rl.cli", "rollout", "loop"]
+    command = ["python", "-m", "swe_rl.cli", "rollout", "pool"]
   }])
 
   volume {

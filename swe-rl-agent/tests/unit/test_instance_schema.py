@@ -1,3 +1,5 @@
+import pytest
+
 from swe_rl.data.instance_schema import SWEBenchInstance
 
 
@@ -28,3 +30,16 @@ def test_from_hf_row_extra_fields():
     inst = SWEBenchInstance.from_hf_row(row)
     assert inst.version == "1.0"
     assert inst.extra.get("weird_field") == 42
+
+
+def test_invalid_test_list_is_rejected():
+    with pytest.raises(ValueError):
+        SWEBenchInstance.from_hf_row(
+            {
+                "instance_id": "x",
+                "repo": "r",
+                "base_commit": "c",
+                "problem_statement": "p",
+                "FAIL_TO_PASS": "not-json",
+            }
+        )

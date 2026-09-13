@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from swe_rl.observability.logging import get_logger
+from swe_rl.settings import settings
 
 _log = get_logger(__name__)
 
@@ -57,7 +58,7 @@ def run_dpo(dataset: Any, config: DPOConfig) -> Path:
         seed=config.seed,
         save_strategy="epoch",
         logging_steps=10,
-        report_to=["wandb"],
+        report_to=["wandb"] if settings.wandb_api_key else "none",
     )
 
     trainer = DPOTrainer(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, ClassVar, Type
+from typing import Any, ClassVar
 
 from pydantic import BaseModel
 
@@ -43,7 +43,7 @@ class ToolResult:
 class Tool:
     name: ClassVar[str] = ""
     description: ClassVar[str] = ""
-    Args: ClassVar[Type[BaseModel]]
+    Args: ClassVar[type[BaseModel]]
 
     def __init__(self, ctx: ToolContext) -> None:
         self.ctx = ctx

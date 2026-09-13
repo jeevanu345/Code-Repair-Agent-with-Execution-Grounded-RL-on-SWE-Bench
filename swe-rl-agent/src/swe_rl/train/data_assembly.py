@@ -5,8 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from swe_rl.rollout.replay_buffer import ReplayBuffer
 
@@ -32,8 +31,9 @@ def trajectory_to_sft(messages: list[dict[str, Any]]) -> list[SFTExample]:
     return out
 
 
-def replay_to_sft_dataset(buffer: ReplayBuffer, *, only_resolved: bool = True) -> "Dataset":
+def replay_to_sft_dataset(buffer: ReplayBuffer, *, only_resolved: bool = True) -> Dataset:
     from datasets import Dataset
+
     rows: list[dict[str, str]] = []
     for r in buffer.iter_rows(only_resolved=only_resolved if only_resolved else None):
         msgs = json.loads(r["messages_json"])
@@ -42,8 +42,9 @@ def replay_to_sft_dataset(buffer: ReplayBuffer, *, only_resolved: bool = True) -
     return Dataset.from_list(rows)
 
 
-def replay_to_dpo_pairs(buffer: ReplayBuffer) -> "Dataset":
+def replay_to_dpo_pairs(buffer: ReplayBuffer) -> Dataset:
     from datasets import Dataset
+
     """Group rollouts by instance; pair best vs worst (by reward) within each group."""
     by_inst: dict[str, list[dict[str, Any]]] = {}
     for r in buffer.iter_rows():
@@ -75,12 +76,13 @@ def replay_to_dpo_pairs(buffer: ReplayBuffer) -> "Dataset":
 def _last_assistant(messages: list[dict[str, Any]]) -> str:
     for m in reversed(messages):
         if m["role"] == "assistant":
-            return m["content"]
+            return str(m["content"])
     return ""
 
 
-def humanevalpack_to_sft(rows: Iterable[dict[str, Any]]) -> "Dataset":
+def humanevalpack_to_sft(rows: Iterable[dict[str, Any]]) -> Dataset:
     from datasets import Dataset
+
     items: list[dict[str, str]] = []
     for r in rows:
         prompt = (
@@ -89,8 +91,6 @@ def humanevalpack_to_sft(rows: Iterable[dict[str, Any]]) -> "Dataset":
             f"# Tests\n```python\n{r.get('test', '')}\n```\n\n"
             "Return only the corrected code."
         )
-        completion = (
-            f"```python\n{r.get('declaration', '')}{r.get('canonical_solution', '')}\n```"
-        )
+        completion = f"```python\n{r.get('declaration', '')}{r.get('canonical_solution', '')}\n```"
         items.append({"prompt": prompt, "completion": completion})
     return Dataset.from_list(items)

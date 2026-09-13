@@ -19,10 +19,11 @@ import shlex
 import tarfile
 import time
 import uuid
-from contextlib import contextmanager
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import docker
 from docker.errors import APIError, ImageNotFound, NotFound
@@ -58,8 +59,8 @@ class ExecResult:
 
 
 class DockerRunner:
-    def __init__(self, client: docker.DockerClient | None = None) -> None:
-        self.client = client or docker.from_env()
+    def __init__(self, client: Any | None = None) -> None:
+        self.client = client or getattr(docker, "from_env")()
         self.image = settings.sandbox_image
         self._containers: dict[str, Container] = {}
 
@@ -72,10 +73,11 @@ class DockerRunner:
             raise RuntimeError(
                 f"Sandbox image {self.image!r} missing. Build with `make build-sandbox`."
             ) from exc
-        digest = img.id or ""
-        return digest
+        return img.id or ""
 
-    def start(self, *, name: str | None = None, env: dict[str, str] | None = None) -> ContainerHandle:
+    def start(
+        self, *, name: str | None = None, env: dict[str, str] | None = None
+    ) -> ContainerHandle:
         digest = self.ensure_image()
         cname = name or f"swe-rl-{uuid.uuid4().hex[:10]}"
         mem_bytes = settings.sandbox_mem_gb * 1024 * 1024 * 1024
@@ -98,7 +100,9 @@ class DockerRunner:
                 cap_drop=["ALL"],
                 security_opt=["no-new-privileges"],
                 read_only=False,
-                tmpfs={"/tmp": "size=512m"},
+                # Build isolation imports compiled wheels from /tmp, so this
+                # mount must permit executable mappings inside the container.
+                tmpfs={"/tmp": "rw,exec,size=512m"},
                 network_mode="bridge",  # install needs network; will detach later
                 environment=env or {},
                 labels={"project": "swe-rl-agent", "kind": "sandbox"},
@@ -118,16 +122,19 @@ class DockerRunner:
         if handle.network_disabled:
             return
         c = self._get(handle)
-        try:
-            for net in self.client.networks.list():
-                try:
-                    net.disconnect(c, force=True)
-                except (APIError, NotFound):
-                    pass
-            handle.network_disabled = True
-            _log.info("sandbox.network_disabled", container_id=handle.container_id)
-        except APIError as e:
-            _log.warning("sandbox.network_disable_failed", error=str(e))
+        c.reload()
+        attached = list((c.attrs.get("NetworkSettings", {}).get("Networks") or {}).keys())
+        for name in attached:
+            try:
+                self.client.networks.get(name).disconnect(c, force=True)
+            except (APIError, NotFound) as exc:
+                raise RuntimeError(f"failed to disconnect sandbox network {name}: {exc}") from exc
+        c.reload()
+        remaining = c.attrs.get("NetworkSettings", {}).get("Networks") or {}
+        if remaining:
+            raise RuntimeError(f"sandbox still attached to networks: {sorted(remaining)}")
+        handle.network_disabled = True
+        _log.info("sandbox.network_disabled", container_id=handle.container_id)
 
     def teardown(self, handle: ContainerHandle) -> None:
         c = self._containers.pop(handle.container_id, None)
@@ -136,14 +143,10 @@ class DockerRunner:
                 c = self.client.containers.get(handle.container_id)
             except NotFound:
                 return
-        try:
+        with suppress(APIError, NotFound):
             c.kill()
-        except (APIError, NotFound):
-            pass
-        try:
+        with suppress(APIError, NotFound):
             c.remove(force=True)
-        except (APIError, NotFound):
-            pass
         _log.info("sandbox.teardown", container_id=handle.container_id)
 
     @contextmanager
@@ -181,8 +184,16 @@ class DockerRunner:
                 )
 
         c = self._get(handle)
-        wrapped = ["bash", "-lc", cmd_str]
         timeout_s = timeout or settings.sandbox_wallclock_s
+        
+        # Activate the correct Conda environment if specified
+        py_version = handle.extra.get("python_version")
+        if py_version:
+            # e.g., "3.9" -> "py39"
+            env_name = f"py{py_version.replace('.', '')}"
+            cmd_str = f"source /opt/conda/bin/activate {env_name} && {cmd_str}"
+            
+        wrapped = ["timeout", "--signal=KILL", str(timeout_s), "bash", "-lc", cmd_str]
 
         start = time.time()
         try:
@@ -198,17 +209,21 @@ class DockerRunner:
             )["Id"]
 
             output_chunks: list[bytes] = []
+            output_bytes = 0
             stream = api.exec_start(exec_id, stream=True, demux=False)
             timed_out = False
             for chunk in stream:
-                output_chunks.append(chunk)
-                if time.time() - start > timeout_s:
-                    timed_out = True
-                    break
+                if output_bytes < settings.sandbox_max_output_bytes:
+                    remaining = settings.sandbox_max_output_bytes - output_bytes
+                    output_chunks.append(chunk[:remaining])
+                    output_bytes += min(len(chunk), remaining)
 
             inspect = api.exec_inspect(exec_id)
-            exit_code = -1 if timed_out else int(inspect.get("ExitCode") or 0)
+            exit_code = int(inspect.get("ExitCode") if inspect.get("ExitCode") is not None else -1)
+            timed_out = exit_code in {124, 137}
             output = b"".join(output_chunks).decode("utf-8", errors="replace")
+            if output_bytes >= settings.sandbox_max_output_bytes:
+                output += "\n[output truncated by sandbox limit]\n"
             duration = time.time() - start
 
             return ExecResult(

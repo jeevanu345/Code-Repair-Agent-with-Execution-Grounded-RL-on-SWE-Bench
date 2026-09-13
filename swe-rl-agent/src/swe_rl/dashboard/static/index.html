@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SWE-RL Control Plane</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header><div><span class="eyebrow">LOCAL OPERATIONS</span><h1>SWE-RL Control Plane</h1></div><button id="refresh">Refresh</button></header>
+  <main>
+    <section><h2>System</h2><div class="status-grid" id="services" aria-live="polite"></div></section>
+    <section><div class="section-head"><h2>Runs</h2><span id="count"></span></div><div class="table-wrap"><table><thead><tr><th>Run</th><th>Instance</th><th>Status</th><th>Model</th><th>Steps</th><th>Reward</th><th>Started</th></tr></thead><tbody id="runs"></tbody></table></div><p class="empty" id="empty">No runs recorded yet.</p></section>
+    <section id="detail" hidden><div class="section-head"><h2>Run detail</h2><button id="close">Close</button></div><dl id="summary"></dl><h3>Reward and tests</h3><pre id="reward"></pre><h3>Trajectory</h3><pre id="trajectory"></pre><h3>Final patch</h3><pre id="patch"></pre></section>
+    <section><h2>Evaluation</h2><p class="empty">No evaluation results yet.</p></section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

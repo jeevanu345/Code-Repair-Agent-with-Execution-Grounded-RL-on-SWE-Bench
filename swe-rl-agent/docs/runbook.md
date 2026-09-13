@@ -25,7 +25,7 @@ Operational guide. Append a new entry per phase change or incident.
 - `docker ps --filter label=project=swe-rl-agent` → find container.
 - `docker logs <id>` → tail the install log.
 - Check Postgres `trajectories` for the row with `instance_id` to see the last recorded step.
-- The reaper kills containers older than `wallclock + 60s`; if many time out, raise `SANDBOX_WALLCLOCK_S` or narrow `test_run` test selection.
+- Each exec is killed at its timeout and rollout cleanup removes the container. There is no independent orphan-container reaper.
 
 ### Recover from a corrupted replay buffer
 - `pyarrow` will refuse to read the corrupted shard. Move it aside:
@@ -34,7 +34,7 @@ Operational guide. Append a new entry per phase change or incident.
 - Re-run rollouts to backfill if the corrupted shard held important data.
 
 ### Cost cap hit
-- The pool drains automatically. To resume: bump `MAX_DOLLARS_PER_RUN` in `.env` and restart the rollout workers.
+- The current rollout stops when its local cost meter exceeds the cap. There is no atomic pool-wide budget; stop workers before changing the cap.
 - Investigate which instance's tool calls were expensive: `select instance_id, sum(tokens_out) from trajectories group by 1 order by 2 desc;`
 
 ## Phase log

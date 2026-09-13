@@ -9,6 +9,7 @@ write tool.
 from __future__ import annotations
 
 import shlex
+from pathlib import PurePosixPath
 
 from pydantic import BaseModel, Field
 
@@ -16,9 +17,10 @@ from swe_rl.agent.tools.base import Tool, ToolResult, truncate
 
 
 def _resolve(repo_dir: str, path: str) -> str:
-    if path.startswith("/"):
-        return path
-    return f"{repo_dir.rstrip('/')}/{path.lstrip('/')}"
+    candidate = PurePosixPath(path)
+    if candidate.is_absolute() or ".." in candidate.parts or path.strip() in {"", "."}:
+        raise ValueError("path must be a non-empty repo-relative path without '..'")
+    return f"{repo_dir.rstrip('/')}/{candidate.as_posix()}"
 
 
 class FileReadArgs(BaseModel):
@@ -94,7 +96,9 @@ class FileEditTool(Tool):
     def _run(self, args: FileEditArgs) -> ToolResult:  # type: ignore[override]
         full = _resolve(self.ctx.repo_dir, args.path)
         try:
-            current = self.ctx.runner.read_file(self.ctx.handle, full).decode("utf-8", errors="replace")
+            current = self.ctx.runner.read_file(self.ctx.handle, full).decode(
+                "utf-8", errors="replace"
+            )
         except Exception as e:
             return ToolResult(False, f"file not found: {full} ({e})", {}, 0.0)
 

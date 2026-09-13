@@ -69,6 +69,10 @@ leaderboard: ## Package predictions for leaderboard
 repro: ## Reproduce a recorded trajectory
 	$(PYTHON) -m swe_rl.cli repro --run-id $(RUN_ID)
 
+.PHONY: dashboard
+dashboard: ## Start read-only local control plane on 127.0.0.1:8088
+	$(PYTHON) -m swe_rl.cli dashboard
+
 .PHONY: test
 test: ## Unit tests
 	$(PYTHON) -m pytest tests/unit -v
