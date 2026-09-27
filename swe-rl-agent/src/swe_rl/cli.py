@@ -161,10 +161,10 @@ def rollout_pool(
 
     # For testing, grab lite
     instances = list(load_swebench(subset="lite", max_instances=10))
-    
+
     cfg = ReactConfig(max_steps=50)
     pool_cfg = PoolConfig(n_workers=n_workers)
-    
+
     submit_pool(
         instances,
         pool=pool_cfg,
@@ -295,13 +295,13 @@ def repro(
     candidates = list(trajectory_dir.rglob(f"{run_id}*.jsonl"))
     if not candidates:
         typer.echo(f"no trajectory matching {run_id}", err=True)
-        raise typer.Exit(1)
-    
+        raise typer.Exit(1) from None
+
     try:
         replay_trajectory(candidates[0], trajectory_dir / "repro")
     except Exception as e:
         typer.echo(f"Replay failed: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 if __name__ == "__main__":

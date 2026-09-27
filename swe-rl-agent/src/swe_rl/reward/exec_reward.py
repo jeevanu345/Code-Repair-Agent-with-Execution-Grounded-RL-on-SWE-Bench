@@ -57,7 +57,13 @@ def compute_exec_reward(
     f2p_rate = len(f2p_pass) / len(fail_to_pass) if fail_to_pass else 1.0
     p2p_rate = len(p2p_pass) / len(pass_to_pass) if pass_to_pass else 1.0
 
-    resolved = (not f2p_fail) and (not p2p_fail) and bool(fail_to_pass)
+    resolved = (
+        not f2p_fail
+        and not p2p_fail
+        and bool(fail_to_pass)
+        and not f2p_results.timed_out
+        and not p2p_results.timed_out
+    )
     value = 1.0 if resolved else 0.0
     METRICS.reward_value.observe(value)
     return ExecRewardResult(

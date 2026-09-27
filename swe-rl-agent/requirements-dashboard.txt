@@ -1,0 +1,5 @@
+# Standalone read-only GUI; no training stack or model downloads required.
+fastapi>=0.115,<1
+uvicorn>=0.31,<1
+pydantic-settings>=2.5,<3
+docker>=7.1,<8

@@ -28,7 +28,7 @@ class ShapedRewardConfig:
 
     def __post_init__(self) -> None:
         if isinstance(self.prm, dict):
-            self.prm = PRMConfig(**self.prm)
+            object.__setattr__(self, "prm", PRMConfig(**self.prm))
 
 
 @dataclass

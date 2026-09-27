@@ -83,7 +83,7 @@ def setup_repo(
     specs = _swebench_specs(instance.repo, instance.version)
     install_cmds: list[str] = []
     python_version = "3.11"
-    
+
     if specs:
         python_version = str(specs.get("python", "3.11"))
         pip_packages = specs.get("pip_packages", [])

@@ -95,7 +95,8 @@ def run_rollout(
             {
                 "model_revision": settings.model_revision,
                 "network_disabled": handle.network_disabled,
-            } | _instance_metadata(instance)
+            }
+            | _instance_metadata(instance)
         )
 
         ctx = ToolContext(
@@ -179,7 +180,7 @@ def run_rollout(
             fail_to_pass=instance.fail_to_pass,
             pass_to_pass=instance.pass_to_pass,
         )
-        if not test_patch_ok or not patch_apply_ok:
+        if not test_patch_ok or not patch_apply_ok or traj.metadata.get("agent_failed"):
             exec_r.resolved = False
             exec_r.value = 0.0
         prm_score = PRMScorer((shaped_cfg or ShapedRewardConfig()).prm).score(
@@ -202,12 +203,13 @@ def run_rollout(
         }
         traj.finished_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         path = traj.write_jsonl(output_dir)
-        
+
         # Upload to the configured MinIO bucket. Failure is explicit in the
         # trajectory metadata but does not discard the local durable artifact.
         s3_path = str(path)
         try:
             from minio import Minio
+
             client = Minio(
                 settings.minio_endpoint,
                 access_key=settings.minio_access_key,
@@ -225,8 +227,11 @@ def run_rollout(
         # Save to PostgreSQL
         try:
             from swe_rl.db import get_session, save_trajectory
+
             with get_session() as session:
-                save_trajectory(session, traj.__dict__, {"exec": exec_r.value, "shaped": shaped.value}, s3_path)
+                save_trajectory(
+                    session, traj.__dict__, {"exec": exec_r.value, "shaped": shaped.value}, s3_path
+                )
         except Exception as e:
             _log.error("rollout.db_save_failed", error=str(e))
 

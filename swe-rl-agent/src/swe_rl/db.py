@@ -10,8 +10,8 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
-    Integer,
     Index,
+    Integer,
     String,
     Text,
     create_engine,
@@ -162,7 +162,7 @@ def save_trajectory(
             storage_path=storage_path,
         )
         session.add(t)
-        
+
         for kind, val in rewards.items():
             r = Reward(
                 trajectory_id=traj_id,
@@ -171,7 +171,7 @@ def save_trajectory(
                 details=traj_data.get("reward_details", {}).get(kind, {}),
             )
             session.add(r)
-        
+
         session.commit()
 
 

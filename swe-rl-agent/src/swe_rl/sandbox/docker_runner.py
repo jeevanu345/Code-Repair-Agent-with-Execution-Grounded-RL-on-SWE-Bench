@@ -185,14 +185,14 @@ class DockerRunner:
 
         c = self._get(handle)
         timeout_s = timeout or settings.sandbox_wallclock_s
-        
+
         # Activate the correct Conda environment if specified
         py_version = handle.extra.get("python_version")
         if py_version:
             # e.g., "3.9" -> "py39"
             env_name = f"py{py_version.replace('.', '')}"
             cmd_str = f"source /opt/conda/bin/activate {env_name} && {cmd_str}"
-            
+
         wrapped = ["timeout", "--signal=KILL", str(timeout_s), "bash", "-lc", cmd_str]
 
         start = time.time()

@@ -28,14 +28,15 @@ def _docker_status() -> str:
     try:
         import docker
 
-        getattr(docker, "from_env")().ping()
+        with getattr(docker, "from_env")(timeout=2) as client:
+            client.ping()
         return "available"
     except Exception:
         return "unavailable"
 
 
 def _trajectory_files() -> list[Path]:
-    roots = [settings.train_output_dir / "trajectories", settings.train_output_dir / "smoke"]
+    roots = [settings.train_output_dir]
     files: list[Path] = []
     for root in roots:
         if root.exists():
@@ -47,6 +48,8 @@ def _load_run(path: Path) -> dict[str, Any] | None:
     try:
         row = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
     except (OSError, IndexError, json.JSONDecodeError):
+        return None
+    if not isinstance(row, dict) or not row.get("trajectory_id"):
         return None
     return {
         "run_id": row.get("trajectory_id", path.stem),
@@ -63,6 +66,7 @@ def _load_run(path: Path) -> dict[str, Any] | None:
         "messages": row.get("messages", []),
         "reward_details": row.get("reward_details", {}),
         "final_patch": row.get("final_patch", ""),
+        "metadata": row.get("metadata", {}),
     }
 
 

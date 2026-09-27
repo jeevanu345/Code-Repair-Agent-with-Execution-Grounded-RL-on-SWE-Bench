@@ -1,5 +1,29 @@
 # swe-rl-agent
 
+## Demo workbench
+
+The read-only GUI includes searchable runs, a highlighted patch viewer, tool traces,
+test evidence, conversation inspection, JSON export, and a saved light/dark theme.
+Choose **Explore demo** for explicitly labeled synthetic examples; recorded runs
+and infrastructure health remain separate. No model endpoint is needed for the GUI.
+
+From `swe-rl-agent/`, install and start just the dashboard:
+
+```bash
+python3 -m venv .venv-dashboard
+.venv-dashboard/bin/pip install -r requirements-dashboard.txt
+PYTHONPATH=src .venv-dashboard/bin/python -m uvicorn swe_rl.dashboard.app:app --host 127.0.0.1 --port 8088
+```
+
+Open http://127.0.0.1:8088. Existing full installations can also use `make dashboard`.
+The GUI reads trajectory JSONL files recursively under `TRAIN_OUTPUT_DIR`
+(default: `./outputs`). It does not start training or modify trajectories.
+The standalone GUI can run on newer Python versions; the full ML project still
+requires Python 3.11–3.12 and its separately declared dependencies.
+
+Terminal-only interaction checks: install `jsdom` in a temporary directory, then run
+`NODE_PATH=/path/to/node_modules node tests/dashboard-ui.cjs`.
+
 **Code-Repair Agent with Execution-Grounded RL on SWE-Bench.**
 
 Prototype for training and evaluating a code-repair agent on SWE-bench Lite/Verified. Binary reward is computed from actual test outcomes inside an ephemeral Docker sandbox.

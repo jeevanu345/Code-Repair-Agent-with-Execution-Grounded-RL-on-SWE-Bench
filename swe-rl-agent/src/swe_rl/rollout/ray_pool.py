@@ -48,7 +48,10 @@ class GlobalCostMeter:
         """Reserve a worst-case rollout cost before contacting the model."""
         if cost < 0:
             raise ValueError("cost must be non-negative")
-        if self.max_dollars is not None and self.total_cost + self.reserved_cost + cost > self.max_dollars:
+        if (
+            self.max_dollars is not None
+            and self.total_cost + self.reserved_cost + cost > self.max_dollars
+        ):
             return False
         self.reserved_cost += cost
         return True
@@ -112,7 +115,7 @@ class RolloutActor:
             )
         finally:
             ray.get(cost_meter.settle.remote(reservation, actual_cost))
-        
+
         return {
             "trajectory_id": result.trajectory.trajectory_id,
             "instance_id": instance.instance_id,
@@ -140,19 +143,18 @@ def submit_pool(
     checkpoint_sha: str | None = None,
 ) -> list[dict[str, Any]]:
     from swe_rl.db import get_session, trajectory_exists
-    
+
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True, log_to_driver=False)
 
     actors = [
-        RolloutActor.remote(model_name, vllm_base_url, vllm_api_key)
-        for _ in range(pool.n_workers)
+        RolloutActor.remote(model_name, vllm_base_url, vllm_api_key) for _ in range(pool.n_workers)
     ]
-    
+
     from swe_rl.settings import settings
 
     cost_meter = GlobalCostMeter.remote(max_dollars=settings.max_dollars_per_pool)
-    
+
     react_kwargs = {k: v for k, v in react_config.__dict__.items() if k not in {"seed"}}
 
     # Create a task list
@@ -161,7 +163,7 @@ def submit_pool(
         for k in range(seeds_per_instance):
             seed = react_config.seed + k * 1000 + i
             tasks.append((inst, seed))
-            
+
     # Do not resubmit already-persisted logical rollouts. This check is best
     # effort when Postgres is intentionally unavailable for local-only runs.
     pending_tasks = list(tasks)
@@ -182,14 +184,16 @@ def submit_pool(
 
     in_flight: dict[Any, tuple[SWEBenchInstance, int, int]] = {}
     results: list[dict[str, Any]] = []
-    
+
     task_idx = 0
     while task_idx < len(pending_tasks) or in_flight:
         # Submit new tasks if we have capacity
-        while len(in_flight) < (pool.n_workers * pool.max_concurrent_per_worker) and task_idx < len(pending_tasks):
+        while len(in_flight) < (pool.n_workers * pool.max_concurrent_per_worker) and task_idx < len(
+            pending_tasks
+        ):
             inst, seed = pending_tasks[task_idx]
             actor = actors[task_idx % len(actors)]
-            
+
             future = actor.run.remote(
                 inst.model_dump(),
                 seed,
@@ -208,7 +212,7 @@ def submit_pool(
 
         # Wait for at least one task to complete
         ready, _ = ray.wait(list(in_flight.keys()), num_returns=1, timeout=1.0)
-        
+
         for done_ref in ready:
             inst, seed, attempts = in_flight.pop(done_ref)
             try:
@@ -220,22 +224,39 @@ def submit_pool(
                 if attempts < pool.max_retries:
                     actor = actors[task_idx % len(actors)]
                     retry = actor.run.remote(
-                        inst.model_dump(), seed, react_kwargs, str(output_dir), None,
-                        apply_gold_patch, checkpoint_sha, cost_meter,
+                        inst.model_dump(),
+                        seed,
+                        react_kwargs,
+                        str(output_dir),
+                        None,
+                        apply_gold_patch,
+                        checkpoint_sha,
+                        cost_meter,
                     )
                     in_flight[retry] = (inst, seed, attempts + 1)
                     _log.warning(
-                        "rollout_pool.retrying", instance=inst.instance_id, seed=seed,
-                        attempt=attempts + 1, error=str(e),
+                        "rollout_pool.retrying",
+                        instance=inst.instance_id,
+                        seed=seed,
+                        attempt=attempts + 1,
+                        error=str(e),
                     )
                 else:
                     _log.error(
-                        "rollout_pool.task_failed", instance=inst.instance_id, seed=seed, error=str(e)
+                        "rollout_pool.task_failed",
+                        instance=inst.instance_id,
+                        seed=seed,
+                        error=str(e),
                     )
-                    results.append({
-                        "instance_id": inst.instance_id, "reward": 0.0, "resolved": False,
-                        "error": str(e), "attempts": attempts + 1,
-                    })
-                
+                    results.append(
+                        {
+                            "instance_id": inst.instance_id,
+                            "reward": 0.0,
+                            "resolved": False,
+                            "error": str(e),
+                            "attempts": attempts + 1,
+                        }
+                    )
+
     _log.info("rollout_pool.done", n=len(results), workers=pool.n_workers)
     return results

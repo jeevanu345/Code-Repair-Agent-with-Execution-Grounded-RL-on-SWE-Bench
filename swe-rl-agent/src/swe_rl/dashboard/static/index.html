@@ -3,17 +3,49 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Inspect execution-grounded code repair trajectories, patches, and test evidence.">
   <title>SWE-RL Control Plane</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header><div><span class="eyebrow">LOCAL OPERATIONS</span><h1>SWE-RL Control Plane</h1></div><button id="refresh">Refresh</button></header>
-  <main>
-    <section><h2>System</h2><div class="status-grid" id="services" aria-live="polite"></div></section>
-    <section><div class="section-head"><h2>Runs</h2><span id="count"></span></div><div class="table-wrap"><table><thead><tr><th>Run</th><th>Instance</th><th>Status</th><th>Model</th><th>Steps</th><th>Reward</th><th>Started</th></tr></thead><tbody id="runs"></tbody></table></div><p class="empty" id="empty">No runs recorded yet.</p></section>
-    <section id="detail" hidden><div class="section-head"><h2>Run detail</h2><button id="close">Close</button></div><dl id="summary"></dl><h3>Reward and tests</h3><pre id="reward"></pre><h3>Trajectory</h3><pre id="trajectory"></pre><h3>Final patch</h3><pre id="patch"></pre></section>
-    <section><h2>Evaluation</h2><p class="empty">No evaluation results yet.</p></section>
-  </main>
-  <script src="/app.js"></script>
+  <a class="skip" href="#workspace">Skip to workspace</a>
+  <aside class="sidebar">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">[r]</span><span>SWE-RL<small>Repair intelligence</small></span></a>
+    <div class="sidebar-label">Workspace</div>
+    <nav aria-label="Workspace">
+      <a href="#workspace" class="active">Repair workbench <span>01</span></a>
+      <a href="#services-panel">Infrastructure <span>02</span></a>
+      <a href="/api/docs" target="_blank" rel="noopener">API reference <span>03</span></a>
+    </nav>
+    <div class="sidebar-note"><span class="signal"></span> Execution-grounded RL<p>Every repair has a story.<br>Inspect the evidence behind it.</p></div>
+    <footer>Local control plane<small>Read-only workspace</small></footer>
+  </aside>
+  <div class="shell">
+    <header class="topbar"><span>Research / <strong>Code repair</strong></span><div class="actions"><button id="theme" aria-label="Toggle dark theme">Dark theme</button><button id="refresh">Refresh data</button></div></header>
+    <main id="workspace">
+      <div class="intro"><div><h1>From issue to evidence.</h1><p>Follow the reasoning. Review the patch. Verify the outcome.</p></div><div class="mode-switch" role="group" aria-label="Data source"><button id="live" aria-pressed="true">Recorded runs</button><button id="demo" aria-pressed="false">Explore demo</button></div></div>
+      <div id="notice" role="status" aria-live="polite">Loading recorded trajectories…</div>
+      <section class="metrics" aria-label="Run summary" id="metrics"></section>
+      <div class="workbench">
+        <section class="run-panel" aria-label="Repair runs">
+          <div class="panel-heading"><h2>Repair runs</h2><span id="count"></span></div>
+          <label class="search">Search instances<input id="search" type="search" placeholder="Repository or instance…" autocomplete="off"></label>
+          <label class="filter">Outcome<select id="filter"><option value="all">All outcomes</option><option value="resolved">Resolved</option><option value="unresolved">Unresolved</option><option value="incomplete">Incomplete</option></select></label>
+          <div id="runs" class="run-list"></div>
+        </section>
+        <section class="inspector" aria-label="Selected run" id="detail">
+          <div class="detail-heading"><div><span id="run-label" class="muted">Trajectory inspector</span><h2 id="instance">Select a repair run</h2></div><span id="outcome" class="badge">Awaiting selection</span></div>
+          <p id="issue" class="issue">Choose a recorded run or explore the illustrative demo.</p>
+          <div id="pipeline" class="pipeline" aria-label="Execution evidence"></div>
+          <div class="tabbar" role="tablist" aria-label="Run details"><button role="tab" id="tab-patch" aria-selected="true" aria-controls="content" data-tab="patch">Patch</button><button role="tab" id="tab-trace" aria-selected="false" aria-controls="content" data-tab="trace" tabindex="-1">Execution trace</button><button role="tab" id="tab-tests" aria-selected="false" aria-controls="content" data-tab="tests" tabindex="-1">Test evidence</button><button role="tab" id="tab-messages" aria-selected="false" aria-controls="content" data-tab="messages" tabindex="-1">Conversation</button><button id="download" disabled>Export JSON</button></div>
+          <div id="content" role="tabpanel" aria-labelledby="tab-patch" tabindex="0"><div class="empty"><h3>The repair, in full context.</h3><p>Tool calls, test outcomes, and the final diff appear here.</p><button id="empty-demo" class="primary">Explore an example</button></div></div>
+          <div id="run-footer" class="run-footer">No model connection required to inspect saved runs.</div>
+        </section>
+      </div>
+      <section id="services-panel" class="infrastructure"><div class="panel-heading"><div><h2>Infrastructure</h2><p>Current local connectivity, independent of demo data.</p></div><span id="checked" class="muted">Checking…</span></div><div id="services" class="services"></div></section>
+      <p class="footnote">Execution results describe individual recorded runs, not an official SWE-bench benchmark score.</p>
+    </main>
+  </div>
+  <script src="/app.js" defer></script>
 </body>
 </html>
