@@ -41,13 +41,6 @@ make eval CHECKPOINT=outputs/grpo SUBSET=lite
 make leaderboard RUN_ID=$(date +%Y%m%d_%H%M%S)
 ```
 
-## Results
-
-> Run `make eval` to populate. The README's results table is overwritten by `eval/report.py`.
-
-| Run | Base model | Train compute | resolved@1 (Lite) | resolved@1 (Verified) | $/instance | W&B |
-|-----|-----------|---------------|-------------------|------------------------|------------|-----|
-| _pending_ | Qwen2.5-Coder-14B | — | — | — | — | — |
 
 ## Layout
 
