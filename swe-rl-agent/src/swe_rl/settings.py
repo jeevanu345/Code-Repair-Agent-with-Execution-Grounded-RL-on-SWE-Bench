@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     vllm_port: int = 8000
     vllm_api_key: str = "local-dev"
 
+    # Shared inference connection. A GUI-saved profile takes precedence.
+    llm_provider: str = "vllm"
+    llm_model: str | None = None
+    llm_base_url: str | None = None
+    llm_api_key: str | None = Field(None, repr=False)
+    llm_profile_path: Path = Path(".llm-profile.json")
+
     # Sandbox
     sandbox_image: str = "swe-rl/sandbox:latest"
     sandbox_mem_gb: int = Field(4, gt=0)

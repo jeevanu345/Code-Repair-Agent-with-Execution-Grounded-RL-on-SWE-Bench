@@ -7,7 +7,7 @@ isolation per task, and (c) it scales to multi-node.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -68,8 +68,10 @@ class GlobalCostMeter:
 
 @ray.remote(max_retries=2)
 class RolloutActor:
-    def __init__(self, model_name: str, vllm_base_url: str, vllm_api_key: str) -> None:
-        self.llm = LLMClient(base_url=vllm_base_url, api_key=vllm_api_key, model=model_name)
+    def __init__(self, config: dict[str, str]) -> None:
+        from swe_rl.agent.providers import connection
+
+        self.llm = LLMClient(config=connection(**config))
 
     def run(
         self,
@@ -147,11 +149,13 @@ def submit_pool(
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True, log_to_driver=False)
 
-    actors = [
-        RolloutActor.remote(model_name, vllm_base_url, vllm_api_key) for _ in range(pool.n_workers)
-    ]
-
+    from swe_rl.agent.providers import active_connection, connection
     from swe_rl.settings import settings
+
+    selected = active_connection()
+    if selected.provider == "vllm" and not settings.llm_profile_path.exists():
+        selected = connection("vllm", model_name, vllm_api_key, vllm_base_url)
+    actors = [RolloutActor.remote(asdict(selected)) for _ in range(pool.n_workers)]
 
     cost_meter = GlobalCostMeter.remote(max_dollars=settings.max_dollars_per_pool)
 

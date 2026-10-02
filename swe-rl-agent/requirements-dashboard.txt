@@ -3,3 +3,7 @@ fastapi>=0.115,<1
 uvicorn>=0.31,<1
 pydantic-settings>=2.5,<3
 docker>=7.1,<8
+httpx>=0.27,<1
+structlog>=24.4
+prometheus-client>=0.21
+sentry-sdk>=2.16

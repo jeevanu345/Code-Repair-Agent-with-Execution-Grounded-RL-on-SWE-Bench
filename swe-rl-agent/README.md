@@ -1,8 +1,16 @@
 # swe-rl-agent
 
+## Bring your own API key
+
+Use **Model connections** in the dashboard to select local vLLM or a major cloud
+provider, supply your own key and model, fetch model IDs, test a completion, and
+save the active connection. The GUI repair assistant and new agent runs use it.
+No API key is included. See [model connections](docs/model-connections.md) for
+provider coverage, local secret storage, environment settings, and training limits.
+
 ## Demo workbench
 
-The read-only GUI includes searchable runs, a highlighted patch viewer, tool traces,
+The GUI includes searchable runs, a highlighted patch viewer, tool traces,
 test evidence, conversation inspection, JSON export, and a saved light/dark theme.
 Choose **Explore demo** for explicitly labeled synthetic examples; recorded runs
 and infrastructure health remain separate. No model endpoint is needed for the GUI.

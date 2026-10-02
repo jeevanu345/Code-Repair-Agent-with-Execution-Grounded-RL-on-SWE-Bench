@@ -10,6 +10,7 @@ venv/
 env/
 
 .env
+.llm-profile.json
 .envrc
 .direnv/
 

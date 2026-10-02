@@ -94,6 +94,7 @@ def run_rollout(
         traj.metadata.update(
             {
                 "model_revision": settings.model_revision,
+                "inference_provider": getattr(llm, "provider", "replay"),
                 "network_disabled": handle.network_disabled,
             }
             | _instance_metadata(instance)
