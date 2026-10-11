@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,13 @@ class SFTConfig:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
-def run_sft(dataset: Any, config: SFTConfig) -> Path:
+def run_sft(
+    dataset: Any,
+    config: SFTConfig,
+    *,
+    event_callback: Callable[[dict[str, Any]], None] | None = None,
+    control_callback: Callable[[], str | None] | None = None,
+) -> Path:
     """Train a model with SFT and save to config.output_dir.
 
     Lazy imports keep CPU-only smoke tests viable.
@@ -79,11 +86,14 @@ def run_sft(dataset: Any, config: SFTConfig) -> Path:
     def _formatter(example: dict[str, Any]) -> str:
         return f"{example['prompt']}\n\n<assistant>\n{example['completion']}"
 
+    from swe_rl.train.telemetry import make_callbacks
+
     trainer = SFTTrainer(
         model=model,
         args=args,
         train_dataset=dataset,
         tokenizer=tok,
+        callbacks=make_callbacks(event_callback, control_callback),
         peft_config=peft_config,
         formatting_func=_formatter,
     )

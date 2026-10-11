@@ -16,7 +16,11 @@ _DATASETS: dict[Subset, str] = {
 
 
 def load_swebench(
-    *, subset: Subset = "lite", split: str = "test", max_instances: int | None = None
+    *,
+    subset: Subset = "lite",
+    split: str = "test",
+    max_instances: int | None = None,
+    revision: str = "main",
 ) -> Iterator[SWEBenchInstance]:
     if subset not in _DATASETS:
         raise ValueError(f"unsupported SWE-bench subset: {subset}")
@@ -24,17 +28,23 @@ def load_swebench(
         raise ValueError("max_instances must be non-negative or None")
     from datasets import load_dataset
 
-    rows = load_dataset(_DATASETS[subset], split=split)
+    rows = load_dataset(_DATASETS[subset], split=split, revision=revision)
     for index, row in enumerate(rows):
         if max_instances is not None and index >= max_instances:
             break
-        yield SWEBenchInstance.from_hf_row(dict(row))
+        instance = SWEBenchInstance.from_hf_row(dict(row))
+        instance.extra["dataset"] = _DATASETS[subset]
+        instance.extra["dataset_revision"] = revision
+        instance.extra["dataset_fingerprint"] = getattr(rows, "_fingerprint", None)
+        yield instance
 
 
-def load_one(instance_id: str, *, subset: Subset | None = None) -> SWEBenchInstance:
+def load_one(
+    instance_id: str, *, subset: Subset | None = None, revision: str = "main"
+) -> SWEBenchInstance:
     subsets: tuple[Subset, ...] = (subset,) if subset else ("lite", "verified", "full")
     for name in subsets:
-        for instance in load_swebench(subset=name):
+        for instance in load_swebench(subset=name, revision=revision):
             if instance.instance_id == instance_id:
                 return instance
     raise LookupError(f"SWE-bench instance not found: {instance_id}")

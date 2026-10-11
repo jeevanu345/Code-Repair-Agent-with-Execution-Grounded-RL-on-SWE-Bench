@@ -11,6 +11,7 @@ env/
 
 .env
 .llm-profile.json
+.llm-fallback.json
 .envrc
 .direnv/
 

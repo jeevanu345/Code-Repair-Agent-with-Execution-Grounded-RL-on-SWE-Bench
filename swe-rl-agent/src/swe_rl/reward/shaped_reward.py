@@ -20,6 +20,9 @@ from swe_rl.utils.patch import is_empty_patch, patch_stats
 
 @dataclass(frozen=True)
 class ShapedRewardConfig:
+    binary_weight: float = 1.0
+    shaped_weight: float = 0.0
+    prm_weight: float = 0.0
     edit_size_penalty_lambda: float = 0.001
     lint_penalty_mu: float = 0.05
     no_patch_penalty: float = -0.1
@@ -27,6 +30,8 @@ class ShapedRewardConfig:
     prm: PRMConfig = field(default_factory=PRMConfig)
 
     def __post_init__(self) -> None:
+        if any(weight < 0 for weight in (self.binary_weight, self.shaped_weight, self.prm_weight)):
+            raise ValueError("reward weights must be non-negative")
         if isinstance(self.prm, dict):
             object.__setattr__(self, "prm", PRMConfig(**self.prm))
 

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
+from swe_rl.agent.model_registry import record_request
 from swe_rl.agent.providers import PROVIDERS, Connection, active_connection, connection
 from swe_rl.settings import settings
 
@@ -31,6 +33,7 @@ class LLMClient:
         config: Connection | None = None,
         timeout: float = 120.0,
         transport: httpx.BaseTransport | None = None,
+        allow_fallback: bool = True,
     ) -> None:
         if config is not None:
             selected = config
@@ -53,6 +56,9 @@ class LLMClient:
         self.base_url = selected.base_url
         self.api_key = selected.api_key
         self.model = selected.model
+        self.allow_fallback = allow_fallback
+        self._transport = transport
+        self._timeout = timeout
         self._client = httpx.Client(timeout=timeout, transport=transport, follow_redirects=False)
 
     def _headers(self) -> dict[str, str]:
@@ -61,10 +67,14 @@ class LLMClient:
         return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
 
     def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        started = time.monotonic()
+        status = None
+        tokens_in = tokens_out = 0
         try:
             result = self._client.request(
                 method, f"{self.base_url}/{path}", headers=self._headers(), **kwargs
             )
+            status = result.status_code
             if result.status_code >= 300:
                 # Never surface provider response bodies, request objects, or keys.
                 status = result.status_code
@@ -78,6 +88,9 @@ class LLMClient:
             body = result.json()
             if not isinstance(body, dict):
                 raise ValueError("Expected JSON object")
+            usage = body.get("usage") or {}
+            tokens_in = int(usage.get("prompt_tokens", usage.get("input_tokens", 0)))
+            tokens_out = int(usage.get("completion_tokens", usage.get("output_tokens", 0)))
             return body
         except httpx.TimeoutException:
             raise RuntimeError("Provider request timed out") from None
@@ -85,6 +98,15 @@ class LLMClient:
             raise RuntimeError("Could not connect to the provider") from None
         except ValueError:
             raise RuntimeError("Provider returned invalid JSON") from None
+        finally:
+            record_request(
+                self.provider,
+                self.model,
+                time.monotonic() - started,
+                status=status,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+            )
 
     def models(self) -> list[str]:
         if PROVIDERS[self.provider].requires_key and not self.api_key:
@@ -98,7 +120,55 @@ class LLMClient:
             }
         )[:1000]
 
-    def chat(
+    def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> LLMResponse:
+        """Use an explicitly configured fallback only for transient failures."""
+        try:
+            return self._chat(messages, **kwargs)
+        except RuntimeError as exc:
+            reason = str(exc)
+            transient = any(
+                term in reason
+                for term in (
+                    "timed out",
+                    "Could not connect",
+                    "HTTP 429",
+                    "HTTP 500",
+                    "HTTP 502",
+                    "HTTP 503",
+                    "HTTP 504",
+                )
+            )
+            if not self.allow_fallback or not transient:
+                raise
+            from swe_rl.dashboard.model_api import fallback_connection
+
+            fallback = fallback_connection()
+            if fallback is None or (fallback.provider, fallback.model, fallback.base_url) == (
+                self.provider,
+                self.model,
+                self.base_url,
+            ):
+                raise
+            client = LLMClient(
+                config=fallback,
+                timeout=self._timeout,
+                transport=self._transport,
+                allow_fallback=False,
+            )
+            try:
+                result = client.chat(messages, **kwargs)
+                result.raw["swe_rl_inference"] = {
+                    "fallback": True,
+                    "provider": fallback.provider,
+                    "model": fallback.model,
+                    "primary_provider": self.provider,
+                    "primary_model": self.model,
+                }
+                return result
+            finally:
+                client.close()
+
+    def _chat(
         self,
         messages: list[dict[str, Any]],
         *,

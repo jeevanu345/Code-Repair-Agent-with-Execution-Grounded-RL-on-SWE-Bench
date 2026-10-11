@@ -48,6 +48,10 @@ class GRPOConfig:
     seed: int = 17
     bf16: bool = True
     weight_sync_every_steps: int = 50
+    binary_reward_weight: float = 1.0
+    shaped_reward_weight: float = 0.2
+    prm_reward_weight: float = 0.0
+    shaped_decay_steps: int = 5000
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -59,6 +63,10 @@ def make_reward_fn(
     shaped_cfg: ShapedRewardConfig,
     vllm_base_url: str,
     vllm_api_key: str,
+    binary_weight: float = 1.0,
+    shaped_weight: float = 0.2,
+    shaped_decay_steps: int = 0,
+    prm_weight: float = 0.0,
 ) -> Callable[..., list[float]]:
     """Build a TRL-compatible reward callable.
 
@@ -76,6 +84,13 @@ def make_reward_fn(
             raise ValueError("each completion must have exactly one instance_id")
         llm = LLMClient(base_url=vllm_base_url, api_key=vllm_api_key)
         rewards: list[float] = []
+        trainer_state = getattr(reward, "trainer_state", None)
+        step = getattr(trainer_state, "global_step", kwargs.get("global_step", 0))
+        current_shaped_weight = (
+            shaped_weight * max(0.0, 1.0 - float(step) / shaped_decay_steps)
+            if shaped_decay_steps > 0
+            else shaped_weight
+        )
         try:
             for index, (instance_id, completion) in enumerate(
                 zip(instance_ids, completions, strict=True)
@@ -93,7 +108,31 @@ def make_reward_fn(
                     shaped_cfg=shaped_cfg,
                     candidate_patch=patch,
                 )
-                rewards.append(float(result.reward))
+                shaped_value = getattr(result, "details", {}).get("shaped", {}).get("value", 0.0)
+                invalid = any(
+                    getattr(result, "trajectory", None) and result.trajectory.metadata.get(flag)
+                    for flag in (
+                        "patch_apply_failed",
+                        "test_patch_apply_failed",
+                        "agent_failed",
+                        "setup_failed",
+                    )
+                )
+                rewards.append(
+                    0.0
+                    if invalid
+                    else binary_weight
+                    * float(
+                        getattr(result, "details", {}).get("exec", {}).get("value", result.reward)
+                    )
+                    + current_shaped_weight * float(shaped_value)
+                    + prm_weight
+                    * float(
+                        getattr(getattr(result, "trajectory", None), "metadata", {})
+                        .get("prm", {})
+                        .get("score", 0)
+                    )
+                )
         finally:
             llm.close()
         return rewards
@@ -134,6 +173,8 @@ def run_grpo(
     shaped_cfg: ShapedRewardConfig,
     vllm_base_url: str,
     vllm_api_key: str,
+    event_callback: Callable[[dict[str, Any]], None] | None = None,
+    control_callback: Callable[[], str | None] | None = None,
 ) -> Path:
     """Run GRPO training. `train_prompts` is a list of dicts with `prompt` + `instance_id`."""
     from datasets import Dataset
@@ -163,6 +204,7 @@ def run_grpo(
         report_to=["wandb"] if settings.wandb_api_key else "none",
         num_generations=config.group_size,
         beta=config.kl_coef,
+        epsilon=config.clip_ratio,
     )
 
     instances_by_id = {i.instance_id: i for i in instances}
@@ -173,9 +215,15 @@ def run_grpo(
         shaped_cfg=shaped_cfg,
         vllm_base_url=vllm_base_url,
         vllm_api_key=vllm_api_key,
+        binary_weight=config.binary_reward_weight,
+        shaped_weight=config.shaped_reward_weight,
+        shaped_decay_steps=config.shaped_decay_steps,
+        prm_weight=config.prm_reward_weight,
     )
 
     ds = Dataset.from_list(train_prompts)
+
+    from swe_rl.train.telemetry import make_callbacks
 
     trainer = GRPOTrainer(
         model=model,
@@ -183,7 +231,9 @@ def run_grpo(
         reward_funcs=[reward_fn],
         train_dataset=ds,
         tokenizer=tok,
+        callbacks=make_callbacks(event_callback, control_callback),
     )
+    reward_fn.trainer_state = trainer.state
     t0 = time.time()
     trainer.train()
     METRICS.optimizer_steps_total.inc(config.max_optimizer_steps)

@@ -36,13 +36,13 @@ class CostMeter:
             projected_in * settings.dollar_per_1k_tokens_in / 1000.0
             + projected_out * settings.dollar_per_1k_tokens_out / 1000.0
         )
-        if projected > settings.max_dollars_per_run:
-            raise CostCapExceeded(
-                f"Cost cap would be exceeded: ${projected:.2f} > "
-                f"${settings.max_dollars_per_run:.2f}"
-            )
         self.tokens_in = projected_in
         self.tokens_out = projected_out
         METRICS.tokens_in_total.inc(tokens_in)
         METRICS.tokens_out_total.inc(tokens_out)
         METRICS.dollar_cost_estimate.set(self.dollars)
+        if projected > settings.max_dollars_per_run:
+            raise CostCapExceeded(
+                f"Cost cap would be exceeded: ${projected:.2f} > "
+                f"${settings.max_dollars_per_run:.2f}"
+            )

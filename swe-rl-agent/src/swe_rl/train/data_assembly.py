@@ -7,10 +7,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from swe_rl.rollout.replay_buffer import ReplayBuffer
-
 if TYPE_CHECKING:
     from datasets import Dataset
+
+    from swe_rl.rollout.replay_buffer import ReplayBuffer
 
 
 @dataclass(frozen=True)

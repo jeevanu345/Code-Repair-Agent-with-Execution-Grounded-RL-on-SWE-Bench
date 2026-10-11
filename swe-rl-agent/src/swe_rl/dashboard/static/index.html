@@ -1,66 +1,1220 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Inspect execution-grounded code repair trajectories, patches, and test evidence.">
-  <title>SWE-RL Control Plane</title>
-  <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="/connections.css">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+
+  <meta
+    name="description"
+    content="SWE-RL enterprise research and software-repair operations console"
+  />
+
+  <title>SWE-RL Console</title>
+
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/connections.css" />
+  <link rel="stylesheet" href="/static/control-center.css" />
+  <link rel="stylesheet" href="/static/selects.css" />
 </head>
+
 <body>
-  <a class="skip" href="#workspace">Skip to workspace</a>
-  <aside class="sidebar">
-    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">[r]</span><span>SWE-RL<small>Repair intelligence</small></span></a>
-    <div class="sidebar-label">Workspace</div>
-    <nav aria-label="Workspace">
-      <a href="#workspace" class="active">Repair workbench <span>01</span></a>
-      <a href="#services-panel">Infrastructure <span>02</span></a>
-      <a href="#model-panel">Model connections</a>
-      <a href="/api/docs" target="_blank" rel="noopener">API reference <span>03</span></a>
-    </nav>
-    <div class="sidebar-note"><span class="signal"></span> Execution-grounded RL<p>Every repair has a story.<br>Inspect the evidence behind it.</p></div>
-    <footer>Local control plane<small>Evidence and model connections</small></footer>
-  </aside>
-  <div class="shell">
-    <header class="topbar"><span>Research / <strong>Code repair</strong></span><div class="actions"><button id="theme" aria-label="Toggle dark theme">Dark theme</button><button id="refresh">Refresh data</button></div></header>
-    <main id="workspace">
-      <div class="intro"><div><h1>From issue to evidence.</h1><p>Follow the reasoning. Review the patch. Verify the outcome.</p></div><div class="mode-switch" role="group" aria-label="Data source"><button id="live" aria-pressed="true">Recorded runs</button><button id="demo" aria-pressed="false">Explore demo</button></div></div>
-      <div id="notice" role="status" aria-live="polite">Loading recorded trajectories…</div>
-      <section class="metrics" aria-label="Run summary" id="metrics"></section>
-      <div class="workbench">
-        <section class="run-panel" aria-label="Repair runs">
-          <div class="panel-heading"><h2>Repair runs</h2><span id="count"></span></div>
-          <label class="search">Search instances<input id="search" type="search" placeholder="Repository or instance…" autocomplete="off"></label>
-          <label class="filter">Outcome<select id="filter"><option value="all">All outcomes</option><option value="resolved">Resolved</option><option value="unresolved">Unresolved</option><option value="incomplete">Incomplete</option></select></label>
-          <div id="runs" class="run-list"></div>
-        </section>
-        <section class="inspector" aria-label="Selected run" id="detail">
-          <div class="detail-heading"><div><span id="run-label" class="muted">Trajectory inspector</span><h2 id="instance">Select a repair run</h2></div><span id="outcome" class="badge">Awaiting selection</span></div>
-          <p id="issue" class="issue">Choose a recorded run or explore the illustrative demo.</p>
-          <div id="pipeline" class="pipeline" aria-label="Execution evidence"></div>
-          <div class="tabbar" role="tablist" aria-label="Run details"><button role="tab" id="tab-patch" aria-selected="true" aria-controls="content" data-tab="patch">Patch</button><button role="tab" id="tab-trace" aria-selected="false" aria-controls="content" data-tab="trace" tabindex="-1">Execution trace</button><button role="tab" id="tab-tests" aria-selected="false" aria-controls="content" data-tab="tests" tabindex="-1">Test evidence</button><button role="tab" id="tab-messages" aria-selected="false" aria-controls="content" data-tab="messages" tabindex="-1">Conversation</button><button id="download" disabled>Export JSON</button></div>
-          <div id="content" role="tabpanel" aria-labelledby="tab-patch" tabindex="0"><div class="empty"><h3>The repair, in full context.</h3><p>Tool calls, test outcomes, and the final diff appear here.</p><button id="empty-demo" class="primary">Explore an example</button></div></div>
-          <div id="run-footer" class="run-footer">No model connection required to inspect saved runs.</div>
-        </section>
+  <a class="skip-link" href="#main-content">
+    Skip to workspace
+  </a>
+
+  <div class="app-shell">
+
+    <!-- =========================================================
+         SIDEBAR
+    ========================================================== -->
+
+    <aside class="sidebar" id="sidebar">
+
+      <div class="sidebar-brand">
+        <div class="brand-mark" aria-hidden="true">
+          SR
+        </div>
+
+        <div class="brand-copy">
+          <div class="brand-name">SWE-RL</div>
+          <div class="brand-subtitle">Research Console</div>
+        </div>
+
+        <button
+          id="mobileSidebarClose"
+          class="icon-button mobile-only"
+          aria-label="Close navigation"
+        >
+          ×
+        </button>
       </div>
-      <section id="services-panel" class="infrastructure"><div class="panel-heading"><div><h2>Infrastructure</h2><p>Current local connectivity, independent of demo data.</p></div><span id="checked" class="muted">Checking…</span></div><div id="services" class="services"></div></section>
-      <section id="model-panel" class="infrastructure">
-        <div class="panel-heading"><div><h2>Your model, your connection.</h2><p>Use local vLLM or a cloud provider with your own API key.</p></div><span class="badge" id="active-model">Loading…</span></div>
-        <form id="model-form" class="model-form">
-          <label>Company<select id="provider" required></select></label>
-          <label>Model ID<input id="model-id" list="model-options" placeholder="Enter or choose a model ID" maxlength="256"><datalist id="model-options"></datalist></label>
-          <label class="wide">API base URL<input id="model-url" type="url" required><small id="endpoint-note">Use the endpoint for your account region.</small></label>
-          <label class="wide">API key<input id="model-key" type="password" autocomplete="new-password" maxlength="4096" placeholder="Enter your key"><small>Keys stay in the local server profile with owner-only permissions. They are not encrypted at rest.</small></label>
-          <div class="wide connection-actions"><button type="submit" class="primary" id="save-model">Save connection</button><button type="button" id="discover-models">Fetch models</button><button type="button" id="test-model">Test connection</button><button type="button" id="reset-model">Remove saved connection</button><a id="provider-docs" target="_blank" rel="noopener">Provider documentation</a></div>
-        </form>
-        <p id="model-status" role="status" aria-live="polite">Saving makes no API calls. Testing sends a short request and may incur provider charges.</p>
-        <details class="assistant-panel"><summary>Try the repair assistant</summary><p>Send an issue or code snippet to the saved model. This panel suggests repairs; it does not execute code or tests.</p><form id="assist-form"><label for="assist-prompt">Issue or code snippet</label><textarea id="assist-prompt" required maxlength="12000" rows="5" placeholder="Describe an error and paste the relevant code…"></textarea><button class="primary" id="ask-model">Ask selected model</button></form><pre id="assist-result" aria-live="polite">Your model's answer will appear here.</pre></details>
-      </section>
-      <p class="footnote">Execution results describe individual recorded runs, not an official SWE-bench benchmark score.</p>
-    </main>
+
+      <nav class="sidebar-nav" aria-label="Primary navigation">
+
+        <div class="nav-group">
+          <div class="nav-group-label">Workspace</div>
+
+          <button class="nav-item is-active" data-page="overview">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/>
+              </svg>
+            </span>
+
+            <span>Overview</span>
+          </button>
+
+          <button class="nav-item" data-page="runs">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm1 5h12V6H6v2Zm0 5h12v-2H6v2Zm0 5h8v-2H6v2Z"/>
+              </svg>
+            </span>
+
+            <span>Repair runs</span>
+
+            <span class="nav-counter" id="sidebarRunCount">0</span>
+          </button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-group-label">Operations</div>
+
+          <button class="nav-item" data-page="infrastructure">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2 3 6v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V6l-9-4Zm0 4 5 2.2V12c0 3.3-2 6.6-5 7.8-3-1.2-5-4.5-5-7.8V8.2L12 6Z"/>
+              </svg>
+            </span>
+
+            <span>Infrastructure</span>
+
+            <span
+              id="infraNavDot"
+              class="nav-status-dot"
+              aria-label="Infrastructure status"
+            ></span>
+          </button>
+
+          <button class="nav-item" data-page="connections">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 7a5 5 0 0 1 7.9-4.1l-2.2 2.2A2 2 0 1 0 15 8.2l2.1-2.1A5 5 0 0 1 10 13l-1.4 1.4A5 5 0 1 1 5.1 11l2.1-2.1A5 5 0 0 1 7 7Zm10 10a5 5 0 0 1-7.9 4.1l2.2-2.2A2 2 0 1 0 9 15.8l-2.1 2.1A5 5 0 0 1 14 11l1.4-1.4A5 5 0 1 1 18.9 13l-2.1 2.1c.1.6.2 1.2.2 1.9Z"/>
+              </svg>
+            </span>
+
+            <span>Model connections</span>
+          </button>
+
+          <button class="nav-item" data-page="assistant">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2a8 8 0 0 1 8 8c0 4.4-3.6 8-8 8H8l-4 4v-7.1A8 8 0 0 1 12 2Zm-4 9h2V9H8v2Zm6 0h2V9h-2v2Zm-3 0h2V9h-2v2Z"/>
+              </svg>
+            </span>
+
+            <span>Repair assistant</span>
+          </button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-group-label">Developer</div>
+
+          <a
+            class="nav-item"
+            href="/api/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 4v2h12V7H6Zm0 4v2h5v-2H6Zm0 4v2h8v-2H6Z"/>
+              </svg>
+            </span>
+
+            <span>API reference</span>
+
+            <span class="external-symbol">↗</span>
+          </a>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-environment">
+          <span class="environment-dot" id="sidebarHealthDot"></span>
+
+          <div class="environment-copy">
+            <span class="environment-name">Local environment</span>
+            <span class="environment-state" id="sidebarHealthText">
+              Checking...
+            </span>
+          </div>
+        </div>
+
+        <div class="sidebar-version">
+          SWE-RL Console
+        </div>
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- =========================================================
+         APP MAIN
+    ========================================================== -->
+
+    <div class="app-main">
+
+      <!-- =======================================================
+           TOPBAR
+      ======================================================== -->
+
+      <header class="topbar">
+
+        <div class="topbar-left">
+          <button
+            id="mobileSidebarOpen"
+            class="icon-button mobile-only"
+            aria-label="Open navigation"
+          >
+            ☰
+          </button>
+
+          <div class="breadcrumb">
+            <span class="breadcrumb-root">SWE-RL</span>
+            <span class="breadcrumb-separator">/</span>
+            <span id="breadcrumbCurrent">Overview</span>
+          </div>
+        </div>
+
+        <div class="topbar-center">
+          <button
+            class="command-trigger"
+            id="commandTrigger"
+            aria-haspopup="dialog"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m21 20-4.3-4.3A7.5 7.5 0 1 0 15.3 17L20 21l1-1ZM5 10.5a5.5 5.5 0 1 1 11 0 5.5 5.5 0 0 1-11 0Z"/>
+            </svg>
+
+            <span>Search runs, repositories, models...</span>
+
+            <kbd>⌘ K</kbd>
+          </button>
+        </div>
+
+        <div class="topbar-actions">
+          <button
+            id="refreshButton"
+            class="icon-button"
+            title="Refresh data"
+            aria-label="Refresh data"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.8-4.3L13 11h8V3l-3.3 3.3Z"/>
+            </svg>
+          </button>
+
+          <button
+            id="themeToggle"
+            class="icon-button"
+            title="Toggle theme"
+            aria-label="Toggle color theme"
+          >
+            <span class="theme-icon-light">☀</span>
+            <span class="theme-icon-dark">☾</span>
+          </button>
+
+          <div class="topbar-divider"></div>
+
+          <div class="connection-pill">
+            <span class="connection-pill-dot"></span>
+            <span id="activeModelTopbar">No model</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- =======================================================
+           MAIN CONTENT
+      ======================================================== -->
+
+      <main id="main-content" class="content">
+
+        <!-- =====================================================
+             OVERVIEW
+        ====================================================== -->
+
+        <section class="page is-active" id="page-overview">
+
+          <div class="page-header">
+            <div>
+              <div class="eyebrow">Research operations</div>
+              <h1>Overview</h1>
+              <p>
+                Monitor repair performance, execution evidence,
+                infrastructure, and model activity from one workspace.
+              </p>
+            </div>
+
+            <div class="page-header-actions">
+              <button class="button button-secondary" data-action="open-connections">
+                Configure model
+              </button>
+
+              <button class="button button-primary" data-action="view-runs">
+                Explore runs
+              </button>
+            </div>
+          </div>
+
+          <div id="overviewNotice" class="notice notice-hidden"></div>
+
+          <!-- KPI GRID -->
+
+          <div class="metric-grid">
+
+            <article class="metric-card">
+              <div class="metric-card-header">
+                <span class="metric-label">Recorded runs</span>
+                <span class="metric-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 4h14v3H5V4Zm0 6h14v3H5v-3Zm0 6h14v3H5v-3Z"/>
+                  </svg>
+                </span>
+              </div>
+
+              <div class="metric-value" id="metricRuns">—</div>
+
+              <div class="metric-footnote">
+                Available trajectories
+              </div>
+            </article>
+
+            <article class="metric-card">
+              <div class="metric-card-header">
+                <span class="metric-label">Resolved</span>
+                <span class="metric-icon metric-icon-success">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m9.2 16.2-4-4 1.4-1.4 2.6 2.6 8.2-8.2 1.4 1.4-9.6 9.6Z"/>
+                  </svg>
+                </span>
+              </div>
+
+              <div class="metric-value" id="metricResolved">—</div>
+
+              <div class="metric-footnote">
+                Execution-grounded success
+              </div>
+            </article>
+
+            <article class="metric-card">
+              <div class="metric-card-header">
+                <span class="metric-label">Resolution rate</span>
+                <span class="metric-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 19V9h3v10H5Zm5 0V5h3v14h-3Zm5 0v-7h3v7h-3Z"/>
+                  </svg>
+                </span>
+              </div>
+
+              <div class="metric-value" id="metricRate">—</div>
+
+              <div class="metric-footnote">
+                Among completed runs
+              </div>
+            </article>
+
+            <article class="metric-card">
+              <div class="metric-card-header">
+                <span class="metric-label">Total tokens</span>
+                <span class="metric-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 2 2 7l10 5 8.2-4.1L22 7 12 2Zm-7.7 9L12 15l7.7-4v3L12 18l-7.7-4v-3Zm0 5L12 20l7.7-4v3L12 23l-7.7-4v-3Z"/>
+                  </svg>
+                </span>
+              </div>
+
+              <div class="metric-value" id="metricTokens">—</div>
+
+              <div class="metric-footnote">
+                Recorded input + output
+              </div>
+            </article>
+
+          </div>
+
+          <!-- DASHBOARD GRID -->
+
+          <div class="overview-grid">
+
+            <section class="panel overview-runs-panel">
+
+              <div class="panel-header">
+                <div>
+                  <h2>Recent repair runs</h2>
+                  <p>Latest recorded execution trajectories.</p>
+                </div>
+
+                <button
+                  class="button button-ghost button-sm"
+                  data-action="view-runs"
+                >
+                  View all
+                </button>
+              </div>
+
+              <div class="table-wrapper">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Instance</th>
+                      <th>Status</th>
+                      <th>Model</th>
+                      <th>Reward</th>
+                      <th>Steps</th>
+                    </tr>
+                  </thead>
+
+                  <tbody id="overviewRunsBody">
+                    <tr>
+                      <td colspan="5">
+                        <div class="table-loading">
+                          Loading repair runs...
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+            </section>
+
+            <section class="panel system-panel">
+
+              <div class="panel-header">
+                <div>
+                  <h2>System health</h2>
+                  <p>Local service connectivity.</p>
+                </div>
+
+                <span class="panel-timestamp" id="healthTimestamp">
+                  —
+                </span>
+              </div>
+
+              <div id="healthMiniList" class="health-mini-list">
+                <div class="skeleton-row"></div>
+                <div class="skeleton-row"></div>
+                <div class="skeleton-row"></div>
+              </div>
+
+              <div class="panel-footer-link">
+                <button
+                  class="link-button"
+                  data-action="open-infrastructure"
+                >
+                  Open infrastructure →
+                </button>
+              </div>
+
+            </section>
+
+          </div>
+
+        </section>
+
+        <!-- =====================================================
+             RUNS
+        ====================================================== -->
+
+        <section class="page" id="page-runs">
+
+          <div class="page-header compact-page-header">
+            <div>
+              <div class="eyebrow">Agent execution</div>
+              <h1>Repair runs</h1>
+              <p>
+                Inspect trajectories, patches, tests, tool calls, and
+                model conversations.
+              </p>
+            </div>
+
+            <div class="page-header-actions">
+              <button
+                class="button button-secondary"
+                data-go="new-run"
+              >
+                New repair run
+              </button>
+
+              <button
+                class="button button-primary"
+                id="runsRefreshButton"
+              >
+                Refresh runs
+              </button>
+            </div>
+          </div>
+
+          <div class="run-workspace">
+
+            <!-- RUN LIST -->
+
+            <aside class="run-list-panel">
+
+              <div class="run-list-toolbar">
+
+                <div class="search-field">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m21 20-4.3-4.3A7.5 7.5 0 1 0 15.3 17L20 21l1-1ZM5 10.5a5.5 5.5 0 1 1 11 0 5.5 5.5 0 0 1-11 0Z"/>
+                  </svg>
+
+                  <input
+                    id="runSearchInput"
+                    type="search"
+                    placeholder="Search runs..."
+                    autocomplete="off"
+                  />
+                </div>
+
+                <select
+                  id="runStatusFilter"
+                  class="select-control"
+                  aria-label="Filter run status"
+                >
+                  <option value="all">All outcomes</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="unresolved">Unresolved</option>
+                  <option value="incomplete">Incomplete</option>
+                  <option value="queued">Queued</option><option value="preparing">Preparing</option><option value="running">Running</option><option value="testing">Testing</option><option value="evaluating">Evaluating</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option><option value="paused">Paused</option>
+                </select>
+
+              </div>
+
+              <div class="run-source-bar">
+                <span id="runSourceLabel">Recorded runs</span>
+                <span id="runResultCount">0 results</span>
+              </div>
+
+              <div
+                id="runList"
+                class="run-list"
+                aria-label="Repair run list"
+              >
+                <div class="empty-state compact-empty">
+                  <div class="spinner"></div>
+                  <div>Loading runs...</div>
+                </div>
+              </div>
+
+            </aside>
+
+            <!-- RUN INSPECTOR -->
+
+            <section class="run-inspector" id="runInspector">
+
+              <div
+                id="runEmptyState"
+                class="inspector-empty"
+              >
+                <div class="empty-illustration">
+                  <svg viewBox="0 0 64 64" aria-hidden="true">
+                    <path d="M10 12h44v40H10V12Zm6 8v4h32v-4H16Zm0 10v4h21v-4H16Zm0 10v4h26v-4H16Z"/>
+                  </svg>
+                </div>
+
+                <h2>Select a repair run</h2>
+                <p>
+                  Inspect its patch, execution trajectory, tests,
+                  and recorded model conversation.
+                </p>
+              </div>
+
+              <div id="runInspectorContent" class="hidden">
+
+                <!-- RUN HEADER -->
+
+                <div class="inspector-header">
+
+                  <div class="inspector-title-block">
+
+                    <div class="inspector-title-row">
+                      <h2 id="inspectorInstanceId">
+                        —
+                      </h2>
+
+                      <span
+                        id="inspectorStatusBadge"
+                        class="status-badge"
+                      >
+                        —
+                      </span>
+                    </div>
+
+                    <div
+                      id="inspectorIssue"
+                      class="inspector-issue"
+                    >
+                      —
+                    </div>
+
+                  </div>
+
+                  <div class="inspector-actions">
+                    <button
+                      id="exportRunButton"
+                      class="button button-secondary button-sm"
+                    >
+                      Export JSON
+                    </button>
+                  </div>
+
+                </div>
+
+                <!-- RUN METADATA -->
+
+                <div class="run-meta-grid">
+
+                  <div class="run-meta-item">
+                    <span>Model</span>
+                    <strong id="inspectorModel">—</strong>
+                  </div>
+
+                  <div class="run-meta-item">
+                    <span>Steps</span>
+                    <strong id="inspectorSteps">—</strong>
+                  </div>
+
+                  <div class="run-meta-item">
+                    <span>Reward</span>
+                    <strong id="inspectorReward">—</strong>
+                  </div>
+
+                  <div class="run-meta-item">
+                    <span>Tool calls</span>
+                    <strong id="inspectorToolCalls">—</strong>
+                  </div>
+
+                  <div class="run-meta-item">
+                    <span>Tokens</span>
+                    <strong id="inspectorTokens">—</strong>
+                  </div>
+
+                  <div class="run-meta-item">
+                    <span>Run ID</span>
+                    <strong
+                      id="inspectorRunId"
+                      class="mono truncate"
+                    >
+                      —
+                    </strong>
+                  </div>
+
+                </div>
+
+                <div id="liveRunControls" class="live-controls"></div>
+                <!-- PIPELINE -->
+
+                <div class="execution-pipeline" id="executionPipeline" aria-label="Recorded execution stages">
+
+                  <div class="pipeline-stage">
+                    <span class="pipeline-dot"></span>
+                    <span>Trajectory</span>
+                  </div>
+
+                  <div class="pipeline-line"></div>
+
+                  <div class="pipeline-stage">
+                    <span class="pipeline-dot"></span>
+                    <span>Setup</span>
+                  </div>
+
+                  <div class="pipeline-line"></div>
+
+                  <div class="pipeline-stage">
+                    <span class="pipeline-dot"></span>
+                    <span>Agent</span>
+                  </div>
+
+                  <div class="pipeline-line"></div>
+
+                  <div class="pipeline-stage">
+                    <span class="pipeline-dot"></span>
+                    <span>Patch</span>
+                  </div>
+
+                  <div class="pipeline-line"></div>
+
+                  <div class="pipeline-stage">
+                    <span class="pipeline-dot"></span>
+                    <span>Evaluation</span>
+                  </div>
+
+                </div>
+
+                <!-- TABS -->
+
+                <div class="tabs" role="tablist" aria-label="Run evidence">
+
+                  <button
+                    class="tab-button is-active"
+                    role="tab"
+                    aria-selected="true"
+                    data-run-tab="patch"
+                  >
+                    Patch
+                  </button>
+
+                  <button
+                    class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    data-run-tab="trace"
+                  >
+                    Execution trace
+                  </button>
+
+                  <button
+                    class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    data-run-tab="tests"
+                  >
+                    Test evidence
+                  </button>
+
+                  <button
+                    class="tab-button"
+                    role="tab"
+                    aria-selected="false"
+                    data-run-tab="conversation"
+                  >
+                    Conversation
+                  </button>
+
+                </div>
+
+                <!-- PATCH -->
+
+                <div
+                  class="run-tab-panel is-active"
+                  data-run-panel="patch"
+                >
+                  <div class="tab-toolbar">
+                    <div>
+                      <strong>Final patch</strong>
+                      <span id="patchStats">—</span>
+                    </div>
+
+                    <button
+                      id="copyPatchButton"
+                      class="button button-ghost button-sm"
+                    >
+                      Copy patch
+                    </button>
+                  </div>
+
+                  <div id="diffControls" class="diff-controls"></div>
+                  <div
+                    id="patchViewer"
+                    class="diff-viewer"
+                  >
+                    <div class="empty-state">
+                      No patch recorded.
+                    </div>
+                  </div>
+                </div>
+
+                <!-- TRACE -->
+
+                <div
+                  class="run-tab-panel"
+                  data-run-panel="trace"
+                >
+                  <div id="liveEvents" class="live-events" aria-live="polite"></div>
+                  <div id="traceViewer" class="trace-viewer"></div>
+                </div>
+
+                <!-- TESTS -->
+
+                <div
+                  class="run-tab-panel"
+                  data-run-panel="tests"
+                >
+                  <div class="test-summary-grid">
+
+                    <div class="test-summary-card">
+                      <span>FAIL_TO_PASS</span>
+                      <strong id="f2pSummary">—</strong>
+                    </div>
+
+                    <div class="test-summary-card">
+                      <span>PASS_TO_PASS</span>
+                      <strong id="p2pSummary">—</strong>
+                    </div>
+
+                  </div>
+
+                  <div id="testViewer" class="test-viewer"></div>
+                </div>
+
+                <!-- CONVERSATION -->
+
+                <div
+                  class="run-tab-panel"
+                  data-run-panel="conversation"
+                >
+                  <div
+                    id="conversationViewer"
+                    class="conversation-viewer"
+                  ></div>
+                </div>
+
+              </div>
+            </section>
+
+          </div>
+        </section>
+
+        <!-- =====================================================
+             INFRASTRUCTURE
+        ====================================================== -->
+
+        <section class="page" id="page-infrastructure">
+
+          <div class="page-header">
+            <div>
+              <div class="eyebrow">Operations</div>
+              <h1>Infrastructure</h1>
+              <p>
+                Connectivity and readiness signals for local runtime
+                dependencies.
+              </p>
+            </div>
+
+            <button
+              class="button button-secondary"
+              id="infraRefreshButton"
+            >
+              Refresh status
+            </button>
+          </div>
+
+          <div
+            id="infrastructureGrid"
+            class="infrastructure-grid"
+          >
+            <div class="service-card skeleton-card"></div>
+            <div class="service-card skeleton-card"></div>
+            <div class="service-card skeleton-card"></div>
+          </div>
+
+          <section class="panel infrastructure-note">
+            <div class="panel-header">
+              <div>
+                <h2>Operational interpretation</h2>
+                <p>
+                  Connectivity does not necessarily imply full service
+                  readiness, migration status, or workload capacity.
+                </p>
+              </div>
+            </div>
+          </section>
+
+        </section>
+
+        <!-- =====================================================
+             CONNECTIONS
+        ====================================================== -->
+
+        <section class="page" id="page-connections">
+
+          <div class="page-header">
+            <div>
+              <div class="eyebrow">Inference</div>
+              <h1>Model connections</h1>
+              <p>
+                Configure the model endpoint used by the repair agent
+                and assistant tools.
+              </p>
+            </div>
+          </div>
+
+          <div class="connections-layout">
+
+            <section class="panel connection-form-panel">
+
+              <div class="panel-header">
+                <div>
+                  <h2>Connection profile</h2>
+                  <p>
+                    Provider and inference endpoint configuration.
+                  </p>
+                </div>
+
+                <span
+                  id="connectionStatusBadge"
+                  class="status-badge neutral"
+                >
+                  Not configured
+                </span>
+              </div>
+
+              <a id="providerDocs" class="link-button" target="_blank" rel="noopener noreferrer" hidden>Provider documentation ↗</a>
+              <form id="connectionForm">
+
+                <div class="form-grid">
+
+                  <div class="form-field">
+                    <label for="providerSelect">
+                      Provider
+                    </label>
+
+                    <select
+                      id="providerSelect"
+                      class="input-control"
+                    >
+                      <option value="">
+                        Loading providers...
+                      </option>
+                    </select>
+                  </div>
+
+                  <div class="form-field">
+                    <label for="modelIdInput">
+                      Model ID
+                    </label>
+
+                    <div class="input-with-action">
+                      <input
+                        id="modelIdInput"
+                        class="input-control"
+                        type="text"
+                        placeholder="e.g. qwen2.5-coder-14b"
+                        autocomplete="off"
+                      />
+
+                      <button
+                        id="fetchModelsButton"
+                        class="button button-secondary"
+                        type="button"
+                      >
+                        Fetch models
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="form-field span-2">
+                    <label for="baseUrlInput">
+                      API base URL
+                    </label>
+
+                    <input
+                      id="baseUrlInput"
+                      class="input-control mono"
+                      type="url"
+                      placeholder="https://api.example.com/v1"
+                      autocomplete="off"
+                    />
+                  </div>
+
+                  <div class="form-field span-2">
+                    <label for="apiKeyInput">
+                      API key
+                    </label>
+
+                    <div class="secret-input">
+                      <input
+                        id="apiKeyInput"
+                        class="input-control mono"
+                        type="password"
+                        placeholder="Enter provider API key"
+                        autocomplete="new-password"
+                      />
+
+                      <button
+                        id="toggleApiKeyButton"
+                        type="button"
+                        class="secret-toggle"
+                        aria-label="Show API key"
+                      >
+                        Show
+                      </button>
+                    </div>
+
+                    <span class="field-help">
+                      Stored by the local backend profile.
+                    </span>
+                  </div>
+
+                </div>
+
+                <div class="form-actions">
+                  <button
+                    id="removeConnectionButton"
+                    class="button button-danger-ghost"
+                    type="button"
+                  >
+                    Remove connection
+                  </button>
+
+                  <div class="form-actions-right">
+                    <button
+                      id="testConnectionButton"
+                      class="button button-secondary"
+                      type="button"
+                    >
+                      Test connection
+                    </button>
+
+                    <button
+                      id="saveConnectionButton"
+                      class="button button-primary"
+                      type="submit"
+                    >
+                      Save connection
+                    </button>
+                  </div>
+                </div>
+
+              </form>
+
+            </section>
+
+            <aside class="connection-sidebar">
+
+              <section class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2>Active model</h2>
+                    <p>Current inference target.</p>
+                  </div>
+                </div>
+
+                <div class="active-model-card">
+                  <div class="active-model-icon">AI</div>
+
+                  <div>
+                    <div
+                      class="active-model-name"
+                      id="activeModelName"
+                    >
+                      No active model
+                    </div>
+
+                    <div
+                      class="active-model-provider"
+                      id="activeModelProvider"
+                    >
+                      Configure a provider
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2>Security</h2>
+                  </div>
+                </div>
+
+                <div class="security-note">
+                  <span class="security-icon">i</span>
+
+                  <p>
+                    Provider credentials remain local to this
+                    dashboard server. Keep the dashboard bound to
+                    loopback unless you add proper authentication.
+                  </p>
+                </div>
+              </section>
+
+            </aside>
+
+          </div>
+
+          <section
+            id="modelsResultPanel"
+            class="panel hidden"
+          >
+            <div class="panel-header">
+              <div>
+                <h2>Available models</h2>
+                <p>Returned by the selected provider.</p>
+              </div>
+            </div>
+
+            <div
+              id="availableModels"
+              class="model-grid"
+            ></div>
+          </section>
+
+        </section>
+
+        <!-- =====================================================
+             ASSISTANT
+        ====================================================== -->
+
+        <section class="page" id="page-assistant">
+
+          <div class="page-header">
+            <div>
+              <div class="eyebrow">Model utility</div>
+              <h1>Repair assistant</h1>
+              <p>
+                Ask the active model to analyze an issue description,
+                code snippet, or repair idea.
+              </p>
+            </div>
+          </div>
+
+          <div class="assistant-layout">
+
+            <section class="panel assistant-input-panel">
+
+              <div class="panel-header">
+                <div>
+                  <h2>Prompt</h2>
+                  <p>
+                    Suggestions only. This does not execute code or
+                    modify a repository.
+                  </p>
+                </div>
+
+                <span
+                  id="assistantCharacterCount"
+                  class="character-count"
+                >
+                  0 / 12,000
+                </span>
+              </div>
+
+              <textarea
+                id="assistantPrompt"
+                class="assistant-textarea"
+                maxlength="12000"
+                placeholder="Describe the issue, paste a failing stack trace, or provide a code snippet..."
+              ></textarea>
+
+              <div class="assistant-actions">
+                <button
+                  id="clearAssistantButton"
+                  class="button button-secondary"
+                >
+                  Clear
+                </button>
+
+                <button
+                  id="runAssistantButton"
+                  class="button button-primary"
+                >
+                  Ask repair assistant
+                </button>
+              </div>
+
+            </section>
+
+            <section class="panel assistant-output-panel">
+
+              <div class="panel-header">
+                <div>
+                  <h2>Model response</h2>
+                  <p id="assistantResponseMeta">
+                    Waiting for input.
+                  </p>
+                </div>
+
+                <button
+                  id="copyAssistantButton"
+                  class="button button-ghost button-sm"
+                  disabled
+                >
+                  Copy
+                </button>
+              </div>
+
+              <div
+                id="assistantResponse"
+                class="assistant-response"
+              >
+                <div class="empty-state">
+                  Enter a problem description to request model
+                  suggestions.
+                </div>
+              </div>
+
+            </section>
+
+          </div>
+
+        </section>
+
+      </main>
+    </div>
   </div>
-  <script src="/app.js" defer></script>
-  <script src="/connections.js" defer></script>
+
+  <!-- ===========================================================
+       COMMAND PALETTE
+  ============================================================ -->
+
+  <div
+    id="commandPalette"
+    class="modal-backdrop hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="commandPaletteTitle"
+  >
+    <div class="command-palette">
+
+      <div class="command-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m21 20-4.3-4.3A7.5 7.5 0 1 0 15.3 17L20 21l1-1ZM5 10.5a5.5 5.5 0 1 1 11 0 5.5 5.5 0 0 1-11 0Z"/>
+        </svg>
+
+        <input
+          id="commandInput"
+          type="text"
+          placeholder="Search commands and runs..."
+          autocomplete="off"
+        />
+
+        <kbd>ESC</kbd>
+      </div>
+
+      <div
+        id="commandResults"
+        class="command-results"
+      ></div>
+
+      <div class="command-footer">
+        <span>↑↓ Navigate</span>
+        <span>↵ Open</span>
+        <span>esc Close</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===========================================================
+       TOASTS
+  ============================================================ -->
+
+  <div
+    id="toastRegion"
+    class="toast-region"
+    aria-live="polite"
+    aria-atomic="true"
+  ></div>
+
+  <script src="/static/api.js"></script>
+  <script src="/static/control-center.js"></script>
+  <script src="/static/app.js"></script>
+  <script src="/static/connections.js"></script>
+  <script src="/static/selects.js"></script>
 </body>
 </html>

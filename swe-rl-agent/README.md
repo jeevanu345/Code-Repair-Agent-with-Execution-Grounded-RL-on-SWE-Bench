@@ -1,5 +1,11 @@
 # swe-rl-agent
 
+**Application directory for SWE-RL Console.**
+
+For the complete introduction, UI tour, architecture diagram, workflows and
+troubleshooting, see the [repository README](../README.md). For the complete
+source/function/API inventory, see [Everything_about_project.md](../Everything_about_project.md).
+
 ## Bring your own API key
 
 Use **Model connections** in the dashboard to select local vLLM or a major cloud
@@ -8,29 +14,24 @@ save the active connection. The GUI repair assistant and new agent runs use it.
 No API key is included. See [model connections](docs/model-connections.md) for
 provider coverage, local secret storage, environment settings, and training limits.
 
-## Demo workbench
+## Operational console
 
-The GUI includes searchable runs, a highlighted patch viewer, tool traces,
-test evidence, conversation inspection, JSON export, and a saved light/dark theme.
-Choose **Explore demo** for explicitly labeled synthetic examples; recorded runs
-and infrastructure health remain separate. No model endpoint is needed for the GUI.
-
-From `swe-rl-agent/`, install and start just the dashboard:
+The enterprise UI launches and manages repair runs, evaluations and guarded training.
+It includes live execution events, experiment comparison, patch/test inspection,
+reward/cost analysis, checkpoints, replay review, dataset slicing and artifact downloads.
+See [control center](docs/control-center.md) for every screen, implementation coverage,
+API/storage details and environment requirements.
 
 ```bash
+# From swe-rl-agent/
 python3 -m venv .venv-dashboard
 .venv-dashboard/bin/pip install -r requirements-dashboard.txt
 PYTHONPATH=src .venv-dashboard/bin/python -m uvicorn swe_rl.dashboard.app:app --host 127.0.0.1 --port 8088
 ```
 
-Open http://127.0.0.1:8088. Existing full installations can also use `make dashboard`.
-The GUI reads trajectory JSONL files recursively under `TRAIN_OUTPUT_DIR`
-(default: `./outputs`). It does not start training or modify trajectories.
-The standalone GUI can run on newer Python versions; the full ML project still
-requires Python 3.11–3.12 and its separately declared dependencies.
-
-Terminal-only interaction checks: install `jsdom` in a temporary directory, then run
-`NODE_PATH=/path/to/node_modules node tests/dashboard-ui.cjs`.
+Open http://127.0.0.1:8088. Workload execution needs the full package, Docker and
+dataset access; GPU training needs the explicit opt-in and compatible hardware.
+The lightweight console alone does not install model frameworks.
 
 **Code-Repair Agent with Execution-Grounded RL on SWE-Bench.**
 
@@ -72,7 +73,7 @@ make train
 make eval CHECKPOINT=outputs/grpo SUBSET=lite
 make leaderboard RUN_ID=$(date +%Y%m%d_%H%M%S)
 
-# optional read-only local dashboard
+# optional local control center
 make dashboard  # http://127.0.0.1:8088
 ```
 
@@ -89,7 +90,7 @@ make dashboard  # http://127.0.0.1:8088
 ```
 src/swe_rl/
   data/         # SWE-bench and HumanEvalPack loaders, instance schema
-  dashboard/    # read-only local status and trajectory UI
+  dashboard/    # operational jobs, live events, evidence and experiments UI
   sandbox/      # Docker runner, repo setup, test executor, safety
   agent/        # ReAct loop, tools, prompts, trajectory
   reward/       # exec_reward (binary), shaped_reward, optional PRM
@@ -108,15 +109,15 @@ docs/           # architecture, reward design, GRPO notes, runbook
 
 ## Engineering invariants
 
-- **Reward must come from real test execution.** No mocks for sandbox or test runner.
-- **Recorded provenance.** Rollouts record seed, generation parameters, model/checkpoint identifiers, repository commit, and sandbox digest. Exact replay is not yet implemented; `make repro` currently inspects a record.
+- **Execution reward comes from real test outcomes.** Unit tests may mock external services; those tests are not benchmark evidence.
+- **Recorded provenance.** Rollouts record seed, generation parameters, model/checkpoint identifiers, repository commit, and sandbox digest. `make repro` replays recorded assistant messages and compares selected execution invariants; exact environment/model replay is not guaranteed.
 - **Isolation.** Containers are ephemeral, resource-capped, network-disabled post-install.
-- **Cost guardrail.** `MAX_DOLLARS_PER_RUN` prevents an individual ReAct rollout from accepting a token update above its cap. It is not a distributed pool-wide budget.
+- **Cost guardrail.** `MAX_DOLLARS_PER_RUN` stops an individual ReAct rollout after incurred usage exceeds its configured cap. It is not a distributed pool-wide budget.
 
 ## Current limitations
 
 - Training is intentionally guarded. `make warmstart` and `make train` refuse to download models or train unless `SWE_RL_ALLOW_HEAVY_TRAINING=YES` is explicitly set on a prepared GPU host.
-- The Ray pool is a basic batch executor; retry, cancellation, idempotency, backpressure, and distributed budget coordination are not implemented.
-- PostgreSQL models and local Redis/MinIO services exist, but rollout persistence and queues currently use local JSONL/Parquet rather than those services.
+- The Ray pool remains a separate basic batch executor with retry/budget scaffolding. The console queue uses local subprocess workers; a distributed durable Ray lifecycle is not implemented.
+- Local job lifecycle uses durable SQLite and subprocess workers. Trajectories use JSONL/Parquet with bounded PostgreSQL/MinIO hooks and an optional PostgreSQL run index. Redis is not the local queue broker.
 - The GRPO reward path evaluates each generated unified diff against its matching instance. Full TRL/vLLM/GPU training remains environment-dependent and is not validated on macOS.
 - Exact deterministic model replay cannot be guaranteed by seed alone.

@@ -36,6 +36,8 @@ class TestResults:
     duration_s: float = 0.0
     timed_out: bool = False
     runner: str = "pytest"
+    exit_code: int | None = None
+    raw_stderr: str = ""
 
     def outcome_for(self, test_id: str) -> TestOutcome:
         return self.outcomes.get(test_id, self.outcomes.get(_normalize(test_id), "missing"))
@@ -112,7 +114,7 @@ class TestExecutor:
         cmd_parts = ["cd", shlex.quote(REPO_DIR), "&&"]
         if prefer_json_report:
             pytest_cmd = (
-                f"python -m pytest --json-report --json-report-file={JSON_REPORT_PATH} "
+                f"rm -f {JSON_REPORT_PATH} && python -m pytest --json-report --json-report-file={JSON_REPORT_PATH} "
                 f"-q --tb=short --no-header " + " ".join(shlex.quote(t) for t in test_ids)
             )
         else:
@@ -147,6 +149,8 @@ class TestExecutor:
             raw_stdout=result.stdout,
             duration_s=result.duration_s,
             timed_out=result.timed_out,
+            exit_code=result.exit_code,
+            raw_stderr=getattr(result, "stderr", ""),
         )
 
 

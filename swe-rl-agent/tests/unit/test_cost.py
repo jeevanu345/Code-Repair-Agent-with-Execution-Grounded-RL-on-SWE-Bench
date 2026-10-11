@@ -19,7 +19,8 @@ def test_cost_meter_caps(monkeypatch):
     m = CostMeter()
     with pytest.raises(CostCapExceeded):
         m.add(100_000, 0)
-    assert m.tokens_in == 0
+    assert m.tokens_in == 100_000
+    assert m.dollars == 100.0
 
 
 def test_cost_meter_rejects_negative_counts():

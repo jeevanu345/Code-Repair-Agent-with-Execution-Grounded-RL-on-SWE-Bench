@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -85,8 +86,13 @@ class ReplayBuffer:
         if not self._buffer:
             return None
         table = pa.Table.from_pylist(self._buffer, schema=_SCHEMA)
-        path = self.root / f"shard_{int(time.time() * 1000)}.parquet"
-        pq.write_table(table, path)
+        path = self.root / f"shard_{time.time_ns()}_{uuid.uuid4().hex}.parquet"
+        temporary = path.with_suffix(".pending")
+        try:
+            pq.write_table(table, temporary)
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
         self._buffer.clear()
         return path
 

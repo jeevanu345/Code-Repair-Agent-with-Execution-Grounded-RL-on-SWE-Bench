@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     # Postgres
     database_url: str = "postgresql+psycopg://swe_rl:swe_rl@127.0.0.1:5432/swe_rl"
+    control_database_url: str | None = None
     postgres_host: str = "127.0.0.1"
     postgres_port: int = 5432
     postgres_db: str = "swe_rl"

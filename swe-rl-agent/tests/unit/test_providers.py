@@ -14,6 +14,22 @@ from swe_rl.settings import settings
 @pytest.fixture(autouse=True)
 def isolated_profile(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "llm_profile_path", tmp_path / ".llm-profile.json")
+    # Never contact a real OS keychain during unit tests.
+    from swe_rl.agent import credentials
+
+    values = {}
+
+    class MemoryKeyring:
+        def get_password(self, service, reference):
+            return values.get(reference)
+
+        def set_password(self, service, reference, value):
+            values[reference] = value
+
+        def delete_password(self, service, reference):
+            values.pop(reference, None)
+
+    monkeypatch.setattr(credentials, "_backend", lambda: MemoryKeyring())
 
 
 @pytest.mark.parametrize("provider", [p for p in PROVIDERS if p != "anthropic"])
@@ -81,10 +97,28 @@ def test_saved_profile_drives_default_client():
     save_connection(config)
     assert active_connection() == config
     assert stat.S_IMODE(settings.llm_profile_path.stat().st_mode) == 0o600
+    assert "synthetic-test-key" not in settings.llm_profile_path.read_text()
+    assert "secret_ref" in json.loads(settings.llm_profile_path.read_text())
     assert "synthetic-test-key" not in repr(config)
     client = LLMClient()
     assert client.provider == "openai" and client.model == "model"
     client.close()
+
+
+def test_legacy_plaintext_profile_is_migrated():
+    settings.llm_profile_path.write_text(
+        json.dumps(
+            {
+                "provider": "openai",
+                "model": "model",
+                "base_url": PROVIDERS["openai"].base_url,
+                "api_key": "synthetic-test-key",
+            }
+        )
+    )
+    assert active_connection().api_key == "synthetic-test-key"
+    assert "synthetic-test-key" not in settings.llm_profile_path.read_text()
+    assert "secret_ref" in json.loads(settings.llm_profile_path.read_text())
 
 
 @pytest.mark.parametrize(

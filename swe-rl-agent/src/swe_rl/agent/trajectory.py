@@ -24,6 +24,9 @@ class ToolCall:
     arguments: dict[str, Any]
     result: dict[str, Any]
     duration_s: float
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cost_usd: float = 0.0
 
 
 @dataclass
@@ -83,10 +86,20 @@ class Trajectory:
         arguments: dict[str, Any],
         result: dict[str, Any],
         duration_s: float,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        cost_usd: float = 0.0,
     ) -> None:
         self.tool_calls.append(
             ToolCall(
-                step=step, tool=tool, arguments=arguments, result=result, duration_s=duration_s
+                step=step,
+                tool=tool,
+                arguments=arguments,
+                result=result,
+                duration_s=duration_s,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=cost_usd,
             )
         )
 

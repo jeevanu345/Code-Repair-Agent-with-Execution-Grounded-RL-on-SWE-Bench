@@ -24,6 +24,11 @@ from swe_rl.agent.providers import (
     connection,
     save_connection,
 )
+from swe_rl.dashboard.analytics import compare_experiments, normalize_run, summarize_runs
+from swe_rl.dashboard.control import install as install_control
+from swe_rl.dashboard.model_api import build_router as build_model_router
+from swe_rl.dashboard.run_index import indexed_runs
+from swe_rl.dashboard.telemetry import router as telemetry_router
 from swe_rl.settings import settings
 
 _STATIC = Path(__file__).with_name("static")
@@ -59,7 +64,7 @@ class ModelSettings(BaseModel):
 def submitted_config(body: ModelSettings) -> Connection:
     try:
         current = active_connection()
-    except ValueError:
+    except (ValueError, RuntimeError):
         current = None
     key = body.api_key.get_secret_value()
     if (
@@ -80,7 +85,7 @@ def submitted_config(body: ModelSettings) -> Connection:
 def providers() -> dict[str, Any]:
     try:
         active = active_connection().public()
-    except ValueError:
+    except (ValueError, RuntimeError):
         active = {
             "provider": "vllm",
             "model": "",
@@ -109,7 +114,7 @@ def model_settings(body: ModelSettings) -> dict[str, object]:
     config = submitted_config(body)
     try:
         save_connection(config)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError):
         raise HTTPException(500, "Could not save the local model profile") from None
     return config.public()
 
@@ -211,23 +216,25 @@ def _load_run(path: Path) -> dict[str, Any] | None:
         return None
     if not isinstance(row, dict) or not row.get("trajectory_id"):
         return None
-    return {
-        "run_id": row.get("trajectory_id", path.stem),
-        "instance_id": row.get("instance_id", ""),
-        "status": "completed" if row.get("finished_at") else "incomplete",
-        "model": row.get("model_name", ""),
-        "steps": row.get("n_steps", 0),
-        "reward": row.get("reward"),
-        "started_at": row.get("started_at"),
-        "finished_at": row.get("finished_at"),
-        "tokens_in": row.get("tokens_in", 0),
-        "tokens_out": row.get("tokens_out", 0),
-        "tool_calls": row.get("tool_calls", []),
-        "messages": row.get("messages", []),
-        "reward_details": row.get("reward_details", {}),
-        "final_patch": row.get("final_patch", ""),
-        "metadata": row.get("metadata", {}),
-    }
+    return normalize_run(
+        {
+            "run_id": row.get("trajectory_id", path.stem),
+            "instance_id": row.get("instance_id", ""),
+            "status": "completed" if row.get("finished_at") else "incomplete",
+            "model": row.get("model_name", ""),
+            "steps": row.get("n_steps", 0),
+            "reward": row.get("reward"),
+            "started_at": row.get("started_at"),
+            "finished_at": row.get("finished_at"),
+            "tokens_in": row.get("tokens_in", 0),
+            "tokens_out": row.get("tokens_out", 0),
+            "tool_calls": row.get("tool_calls", []),
+            "messages": row.get("messages", []),
+            "reward_details": row.get("reward_details", {}),
+            "final_patch": row.get("final_patch", ""),
+            "metadata": row.get("metadata", {}),
+        }
+    )
 
 
 @app.get("/api/health")
@@ -244,7 +251,7 @@ def health() -> dict[str, Any]:
             if selected.public()["ready"]
             else "not configured"
         )
-    except ValueError:
+    except (ValueError, RuntimeError):
         model_status = "invalid configuration"
     return {
         "api": "available",
@@ -263,7 +270,45 @@ def health() -> dict[str, Any]:
 
 @app.get("/api/runs")
 def runs() -> list[dict[str, Any]]:
-    return [run for path in _trajectory_files() if (run := _load_run(path)) is not None]
+    from swe_rl.dashboard.jobs import JobStore
+
+    try:
+        recorded = indexed_runs(_load_run)
+    except Exception:
+        recorded = [run for path in _trajectory_files() if (run := _load_run(path)) is not None]
+    jobs = JobStore(settings.train_output_dir / "control").list()
+    for job in jobs:
+        folder = settings.train_output_dir / "control" / job["id"]
+        evidence = next(
+            (row for path in folder.glob("*.jsonl") if (row := _load_run(path)) is not None), None
+        )
+        if evidence:
+            recorded = [row for row in recorded if row["run_id"] != evidence["run_id"]]
+            job = {
+                **job,
+                **evidence,
+                "run_id": job["id"],
+                "trajectory_id": evidence["run_id"],
+                "status": job["status"],
+                "config": job["config"],
+            }
+        recorded.append(job)
+    return [normalize_run(row) for row in recorded]
+
+
+@app.get("/api/analytics")
+def analytics() -> dict[str, Any]:
+    return summarize_runs(runs())
+
+
+@app.get("/api/compare")
+def compare(left: str, right: str) -> dict[str, Any]:
+    return compare_experiments(runs(), left, right)
+
+
+install_control(app, protect_settings, _load_run, _trajectory_files)
+app.include_router(build_model_router(protect_settings))
+app.include_router(telemetry_router)
 
 
 @app.get("/")
@@ -273,6 +318,10 @@ def index() -> FileResponse:
 
 @app.get("/{asset:path}")
 def asset(asset: str) -> FileResponse:
+    if asset.startswith("api/"):
+        raise HTTPException(404, "API endpoint not found")
+    if asset.startswith("static/"):
+        asset = asset.removeprefix("static/")
     target = (_STATIC / asset).resolve()
     if _STATIC.resolve() not in target.parents:
         return FileResponse(_STATIC / "index.html")

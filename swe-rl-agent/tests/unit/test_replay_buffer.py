@@ -33,3 +33,13 @@ def test_buffer_roundtrip(tmp_path: Path):
 
     resolved = list(buf.iter_rows(only_resolved=True))
     assert {r["instance_id"] for r in resolved} == {"a", "c"}
+
+
+def test_fast_flushes_never_overwrite_previous_shard(monkeypatch, tmp_path):
+    monkeypatch.setattr("swe_rl.rollout.replay_buffer.time.time_ns", lambda: 123)
+    buffer = ReplayBuffer(root=tmp_path, shard_max_rows=1)
+    for name in ("first", "second", "third"):
+        buffer.add(_mk_traj(name, 1, True))
+    assert len(list(buffer.iter_shards())) == 3
+    assert {row["instance_id"] for row in buffer.iter_rows()} == {"first", "second", "third"}
+    assert not list(tmp_path.glob("*.pending"))

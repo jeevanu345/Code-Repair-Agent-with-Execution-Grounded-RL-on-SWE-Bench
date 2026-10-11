@@ -21,7 +21,7 @@ shaped = 0.5 * f2p_pass_rate
 ```
 
 Provides gradient when no rollout in a group fully resolves. Weight decays from
-0.2 → 0 over `shaped_decay_steps` (default 2000).
+0.2 → 0 over `shaped_decay_steps` (default 5000).
 
 ## Why both?
 
@@ -52,3 +52,5 @@ A frozen judge that scores intermediate (state, action) pairs. Blends with
 terminal reward at weight `prm.weight`. Off because (a) it adds latency,
 (b) miscalibrated PRMs can dominate the binary signal. Enable only after
 the binary objective has plateaued.
+
+Operational rollouts store the configured execution/shaped/PRM mixture and retain binary execution separately. GRPO uses configured component weights and optimizer-step shaped decay. See [control center](control-center.md).

@@ -32,7 +32,7 @@ def dashboard(
     host: str = typer.Option("127.0.0.1", help="Bind address"),
     port: int = typer.Option(8088, min=1, max=65535),
 ) -> None:
-    """Start the read-only local operations dashboard."""
+    """Start the local operations control center."""
     import uvicorn
 
     uvicorn.run("swe_rl.dashboard.app:app", host=host, port=port)
@@ -133,6 +133,9 @@ def rollout_one(
     output_dir: Path = typer.Option(Path("./outputs/rollouts")),
     seed: int = 17,
     max_steps: int = 50,
+    strategy: str = "standard",
+    test_budget: int = 6,
+    minimize_patch: bool = False,
 ) -> None:
     observability.init("rollout")
     from swe_rl.agent.llm_client import LLMClient
@@ -142,9 +145,54 @@ def rollout_one(
 
     inst = load_one(instance_id)
     llm = LLMClient()
-    cfg = ReactConfig(seed=seed, max_steps=max_steps)
+    cfg = ReactConfig(
+        seed=seed,
+        max_steps=max_steps,
+        profile=strategy,
+        max_test_runs=test_budget,
+        minimize_patch=minimize_patch,
+    )
     r = run_rollout(inst, llm=llm, react_config=cfg, output_dir=output_dir)
     typer.echo(json.dumps({"reward": r.reward, "resolved": r.resolved}, indent=2))
+
+
+@rollout_app.command("candidates")
+def rollout_candidates(
+    instance_id: str,
+    count: int = typer.Option(4, min=1, max=16),
+    workers: int = typer.Option(2, min=1, max=4),
+    selection: str = "regression-safe",
+    output_dir: Path = Path("./outputs/candidates"),
+) -> None:
+    """Generate independent repair candidates and report measured pass@k."""
+    from swe_rl.agent.llm_client import LLMClient
+    from swe_rl.agent.react_loop import ReactConfig
+    from swe_rl.data.swebench_loader import load_one
+    from swe_rl.rollout.worker import run_candidates
+
+    client = LLMClient()
+    try:
+        result = run_candidates(
+            load_one(instance_id),
+            candidates=count,
+            max_workers=workers,
+            selection=selection,
+            llm=client,
+            react_config=ReactConfig(),
+            output_dir=output_dir,
+        )
+        typer.echo(
+            json.dumps(
+                {
+                    "selected": result["selected"].trajectory.trajectory_id,
+                    "selection": result["selection"],
+                    "pass_at_k": result["pass_at_k"],
+                },
+                indent=2,
+            )
+        )
+    finally:
+        client.close()
 
 
 @rollout_app.command("pool")
@@ -189,7 +237,14 @@ def eval_lite(
     run_id: str = typer.Option("default"),
     base_model: str = typer.Option(""),
     invoke_harness: bool = typer.Option(True),
+    subset: str = typer.Option("lite", help="lite, verified, or full"),
+    parallelism: int = typer.Option(4, min=1, max=64),
+    model: str = typer.Option("", help="Model ID already served by the active connection"),
 ) -> None:
+    if subset not in {"lite", "verified", "full"}:
+        raise typer.BadParameter(
+            "Use lite, verified, or full; other variants require imported predictions through the benchmark API"
+        )
     observability.init("eval")
     from swe_rl.agent.llm_client import LLMClient
     from swe_rl.agent.react_loop import ReactConfig
@@ -202,18 +257,22 @@ def eval_lite(
     )
 
     eval_cfg = EvalConfig(
-        subset="lite",
+        subset=subset,
         max_instances=max_instances,
         k_samples=k_samples,
         output_predictions=output_predictions,
         report_dir=report_dir,
+        parallelism=parallelism,
+        model_name_for_predictions=model or settings.model_name,
     )
     react_cfg = ReactConfig()
-    llm = LLMClient()
+    llm = LLMClient(model=model or None)
     generate_predictions(eval_config=eval_cfg, react_config=react_cfg, llm=llm)
 
     if invoke_harness:
-        report = run_official_harness(output_predictions, subset="lite", run_id=run_id)
+        report = run_official_harness(
+            output_predictions, subset=subset, run_id=run_id, max_workers=parallelism
+        )
         rate = resolved_at_1(report)
         render_report(
             run_id=run_id,
@@ -232,6 +291,7 @@ def eval_lite(
 def train_sft(
     output_dir: Path = typer.Option(Path("./outputs/sft")),
     use_humanevalpack: bool = typer.Option(True),
+    dataset_path: Path | None = typer.Option(None, help="Reviewed SFT JSON/JSONL export"),
 ) -> None:
     if not settings.swe_rl_allow_heavy_training:
         raise typer.BadParameter(
@@ -243,12 +303,29 @@ def train_sft(
     from swe_rl.train.data_assembly import humanevalpack_to_sft
     from swe_rl.train.sft_warmstart import SFTConfig, run_sft
 
-    if use_humanevalpack:
+    if dataset_path is not None:
+        from datasets import load_dataset
+
+        ds = load_dataset("json", data_files=str(dataset_path), split="train")
+    elif use_humanevalpack:
         ds = humanevalpack_to_sft(load_humanevalpack(language="python", split="test"))
     else:
-        raise typer.BadParameter("--no-use-humanevalpack requires --replay-buffer; not yet wired")
+        raise typer.BadParameter("Use --dataset-path with --no-use-humanevalpack")
 
     run_sft(ds, SFTConfig(model_name=settings.model_name, output_dir=output_dir))
+
+
+@train_app.command("dpo")
+def train_dpo(dataset_path: Path, output_dir: Path = Path("./outputs/dpo")) -> None:
+    """Train on reviewed preference JSON/JSONL (prompt/chosen/rejected)."""
+    if not settings.swe_rl_allow_heavy_training:
+        raise typer.BadParameter("Set SWE_RL_ALLOW_HEAVY_TRAINING=true on a prepared GPU host")
+    from datasets import load_dataset
+
+    from swe_rl.train.dpo_trainer import DPOConfig, run_dpo
+
+    dataset = load_dataset("json", data_files=str(dataset_path), split="train")
+    run_dpo(dataset, DPOConfig(model_name=settings.model_name, output_dir=output_dir))
 
 
 @train_app.command("grpo")
@@ -288,7 +365,7 @@ def repro(
     run_id: str = typer.Option(...),
     trajectory_dir: Path = typer.Option(Path("./outputs/trajectories")),
 ) -> None:
-    """Re-run a recorded trajectory deterministically."""
+    """Replay recorded assistant messages and compare execution invariants."""
     observability.init("repro")
     from swe_rl.rollout.repro import replay_trajectory
 

@@ -43,10 +43,12 @@ class TestRunTool(Tool):
             f"timed_out={results.timed_out} duration={results.duration_s:.1f}s\n\n"
         )
         return ToolResult(
-            ok=(not results.timed_out),
+            ok=(not results.timed_out and failed == 0),
             output=summary + text,
             data={
                 "outcomes": results.outcomes,
+                "exit_code": results.exit_code,
+                "stderr": results.raw_stderr,
                 "timed_out": results.timed_out,
                 "budget_remaining": self.ctx.test_runs_remaining,
             },

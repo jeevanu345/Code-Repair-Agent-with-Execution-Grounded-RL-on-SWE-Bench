@@ -1,0 +1,39 @@
+name: SWE-RL checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: swe-rl-agent
+
+jobs:
+  unit-and-ui:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test dependencies without model frameworks
+        run: |
+          python -m pip install -r requirements-dashboard.txt pytest pytest-asyncio pyarrow unidiff tenacity sqlalchemy "datasets>=3,<4" "huggingface-hub>=0.25,<1" ruff rich typer
+          npm install --prefix /tmp/swe-rl-ui jsdom@26
+      - name: Python quality checks
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+          PYTHONPATH=src python -m pytest tests/unit -q
+      - name: UI interactions
+        env:
+          NODE_PATH: /tmp/swe-rl-ui/node_modules
+        run: |
+          node tests/dashboard-ui.cjs
+          node tests/connections-ui.cjs
+          node tests/control-center-ui.cjs

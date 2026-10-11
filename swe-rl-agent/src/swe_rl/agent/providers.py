@@ -9,11 +9,13 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from dataclasses import asdict, dataclass, field
+from contextlib import suppress
+from dataclasses import dataclass, field
 from pathlib import Path
 from threading import RLock
 from urllib.parse import urlsplit
 
+from swe_rl.agent.credentials import delete_secret, load_secret, secret_reference, store_secret
 from swe_rl.settings import settings
 
 
@@ -172,7 +174,15 @@ def active_connection() -> Connection:
         if path.exists():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                return connection(**data)
+                reference = data.pop("secret_ref", "")
+                if reference:
+                    data["api_key"] = load_secret(reference)
+                selected = connection(**data)
+                if not reference and data.get("api_key"):
+                    # An explicitly configured legacy profile is migrated in place.
+                    # A missing OS store fails closed instead of keeping new plaintext writes.
+                    save_connection(selected)
+                return selected
             except (OSError, TypeError, json.JSONDecodeError) as exc:
                 raise ValueError("Invalid inference profile; reset it in model settings") from exc
         provider = settings.llm_provider
@@ -185,20 +195,38 @@ def active_connection() -> Connection:
 
 
 def save_connection(config: Connection) -> None:
-    """Atomically save an explicitly supplied key, with owner-only permissions."""
+    """Save public configuration atomically; keep keys in the OS credential store."""
     with _lock:
         path = settings.llm_profile_path
         if path.is_symlink():
             raise ValueError("Profile file must not be a symlink")
         path.parent.mkdir(parents=True, exist_ok=True)
+        previous_ref = ""
+        if path.exists():
+            with suppress(OSError, ValueError, AttributeError):
+                previous_ref = json.loads(path.read_text()).get("secret_ref", "")
+        reference = (
+            secret_reference(path, config.provider, config.base_url) if config.api_key else ""
+        )
+        if reference:
+            store_secret(reference, config.api_key)
+        public_data = {
+            "provider": config.provider,
+            "base_url": config.base_url,
+            "model": config.model,
+        }
+        if reference:
+            public_data["secret_ref"] = reference
         descriptor, name = tempfile.mkstemp(prefix=".llm-profile-", dir=path.parent)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-                json.dump(asdict(config), stream)
+                json.dump(public_data, stream)
                 stream.flush()
                 os.fsync(stream.fileno())
             Path(name).chmod(0o600)
             Path(name).replace(path)
+            if previous_ref and previous_ref != reference:
+                delete_secret(previous_ref)
         finally:
             Path(name).unlink(missing_ok=True)
 
@@ -207,4 +235,11 @@ def clear_connection() -> None:
     with _lock:
         if settings.llm_profile_path.is_symlink():
             raise ValueError("Profile file must not be a symlink")
+        if settings.llm_profile_path.exists():
+            try:
+                reference = json.loads(settings.llm_profile_path.read_text()).get("secret_ref", "")
+            except (OSError, ValueError, AttributeError):
+                reference = ""
+            if reference:
+                delete_secret(reference)
         settings.llm_profile_path.unlink(missing_ok=True)

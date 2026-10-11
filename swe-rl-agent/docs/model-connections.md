@@ -31,7 +31,7 @@ defaults. This is a local configuration interface, not a multi-user hosted servi
 
 The repair assistant sends a user-supplied issue/code snippet through the active
 connection. It returns suggestions without executing them. Full execution-grounded
-rollouts remain available through `python -m swe_rl.cli rollout one INSTANCE_ID`.
+rollouts can be launched through New Run and managed from Runs, or through `python -m swe_rl.cli rollout one INSTANCE_ID`.
 CLI rollout/evaluation jobs started from the same working directory read the saved
 profile. Existing running clients keep their original connection until restarted.
 
@@ -39,8 +39,10 @@ profile. Existing running clients keep their original connection until restarted
 
 Precedence: explicit client configuration, GUI profile, environment defaults.
 The profile defaults to `.llm-profile.json` in the working directory. Git ignores
-it; writes are atomic with owner-only permissions (0600). Secrets are plaintext
-on local disk, not encrypted. API responses omit keys, errors avoid provider response
+it; writes are atomic with owner-only permissions (0600). Provider keys are stored
+in an approved OS keyring; the profile stores only a scoped secret reference.
+Credential saving fails when no secure backend is available. Legacy plaintext
+profiles migrate when read. API responses omit keys, errors avoid provider response
 bodies, and frontend keys are not put in localStorage. Use the app only on loopback.
 Trusted Host validation and a same-origin settings token protect mutations.
 This is not user authentication for a remotely deployed service.
@@ -74,3 +76,7 @@ Tests cover Claude protocol, usage normalization, secure file permissions, defau
 client selection, missing credentials, redacted errors, cross-origin rejection,
 and GUI assistant routing. No real key or model weights were added.
 Live provider generation requires a user's key and available model.
+
+## Registry and fallback
+
+The console includes user-declared model capabilities/pricing and measured request telemetry. Explicit fallback handles transient failures and records its actual provider/model. Custom prompt versions are immutable. See [control center](control-center.md) for job controls, storage and operational limits.

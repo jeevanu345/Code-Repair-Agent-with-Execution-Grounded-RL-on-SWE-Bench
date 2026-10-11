@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -27,7 +28,13 @@ class DPOConfig:
     seed: int = 17
 
 
-def run_dpo(dataset: Any, config: DPOConfig) -> Path:
+def run_dpo(
+    dataset: Any,
+    config: DPOConfig,
+    *,
+    event_callback: Callable[[dict[str, Any]], None] | None = None,
+    control_callback: Callable[[], str | None] | None = None,
+) -> Path:
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from trl import DPOConfig as TRLDPOConfig
     from trl import DPOTrainer
@@ -61,12 +68,15 @@ def run_dpo(dataset: Any, config: DPOConfig) -> Path:
         report_to=["wandb"] if settings.wandb_api_key else "none",
     )
 
+    from swe_rl.train.telemetry import make_callbacks
+
     trainer = DPOTrainer(
         model=model,
         ref_model=ref_model,
         args=args,
         train_dataset=dataset,
         tokenizer=tok,
+        callbacks=make_callbacks(event_callback, control_callback),
     )
     trainer.train()
     out = config.output_dir

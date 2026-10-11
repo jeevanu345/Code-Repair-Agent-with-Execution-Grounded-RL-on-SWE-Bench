@@ -5,6 +5,12 @@ from swe_rl.agent.tools.bash import BashTool
 from swe_rl.agent.tools.file_edit import FileEditTool, FileReadTool, FileWriteTool
 from swe_rl.agent.tools.finish import FinishTool
 from swe_rl.agent.tools.grep import GrepTool
+from swe_rl.agent.tools.intelligence import (
+    GitHistoryTool,
+    RepositoryGraphTool,
+    SemanticCodeSearchTool,
+    SymbolEditTool,
+)
 from swe_rl.agent.tools.repo_map import RepoMapTool
 from swe_rl.agent.tools.test_run import TestRunTool
 
@@ -17,6 +23,10 @@ def default_toolset(ctx: ToolContext) -> list[Tool]:
         FileEditTool(ctx),
         GrepTool(ctx),
         RepoMapTool(ctx),
+        RepositoryGraphTool(ctx),
+        SemanticCodeSearchTool(ctx),
+        GitHistoryTool(ctx),
+        SymbolEditTool(ctx),
         TestRunTool(ctx),
         FinishTool(ctx),
     ]

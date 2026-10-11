@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from swe_rl.data.instance_schema import SWEBenchInstance
 from swe_rl.utils.patch import patch_stats
@@ -38,3 +39,39 @@ def staged_curriculum(
                 out[i].append(inst)
                 break
     return out
+
+
+def curriculum_from_failures(
+    instances: Iterable[SWEBenchInstance],
+    recorded_runs: list[dict[str, Any]],
+) -> dict[str, list[SWEBenchInstance]]:
+    """Use observed categories to separate environment remediation and repair lessons.
+
+    No gold patch is inspected; this is a measured-category curriculum, not a
+    learned difficulty estimate. Previously solved tasks are a retention stage.
+    """
+    by_instance: dict[str, set[str]] = {}
+    for row in recorded_runs:
+        evidence = (
+            row.get("failure_analysis") or (row.get("metadata") or {}).get("failure_analysis") or {}
+        )
+        category = evidence.get("category", "unobserved")
+        by_instance.setdefault(row.get("instance_id", ""), set()).add(category)
+    stages: dict[str, list[SWEBenchInstance]] = {
+        "environment_remediation": [],
+        "repair_practice": [],
+        "retention": [],
+        "unobserved": [],
+    }
+    for instance in instances:
+        categories = by_instance.get(instance.instance_id, set())
+        if categories & {"repository_setup", "evaluation_setup", "tests_unavailable"}:
+            stage = "environment_remediation"
+        elif categories & {"resolved"}:
+            stage = "retention"
+        elif categories:
+            stage = "repair_practice"
+        else:
+            stage = "unobserved"
+        stages[stage].append(instance)
+    return stages
